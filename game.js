@@ -73,17 +73,58 @@ function showResult(won) {
   renderTable();
 
   $("guess-area").hidden = true;
-  $("result").hidden = false;
+  const resultEl = $("result");
+  resultEl.hidden = false;
+  resultEl.classList.toggle("win", won);
   $("result-headline").textContent = won ? "Got it!" : "Out of guesses";
   const points = won ? Math.max(10 - state.guesses - state.hintsUsed * 2, 1) : 0;
   state.score += points;
   localStorage.setItem("bg.score", String(state.score));
+  // Local stats for the fallback leaderboard view
+  const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0}');
+  localStats.rounds += 1;
+  if (won) {
+    localStats.wins += 1;
+    localStats.total += points;
+    if (points > localStats.best) localStats.best = points;
+  }
+  localStorage.setItem("bg.stats", JSON.stringify(localStats));
   renderStatus();
   $("result-detail").textContent = won
     ? `It was ${state.player.name}. +${points} point${points === 1 ? "" : "s"} (${state.guesses} guesses, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}).`
     : `It was ${state.player.name}.`;
   $("br-link").href = state.player.br_url;
-  if (won) postScore(points);
+  if (won) {
+    celebrate(resultEl);
+    postScore(points);
+  }
+}
+
+function celebrate(resultEl) {
+  // Pulse the result card
+  resultEl.classList.add("win-pulse");
+  setTimeout(() => resultEl.classList.remove("win-pulse"), 1300);
+
+  // Radial green flash
+  const flash = document.createElement("div");
+  flash.className = "flash-bg";
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 900);
+
+  // Confetti burst — baseballs + green hearts + sparks
+  const emojis = ["⚾", "⚾", "⚾", "💚", "🟢", "✨", "🎉"];
+  const count = 28;
+  for (let i = 0; i < count; i++) {
+    const span = document.createElement("span");
+    span.className = "confetti";
+    span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    span.style.left = `${Math.random() * 100}vw`;
+    span.style.fontSize = `${18 + Math.random() * 16}px`;
+    span.style.animationDuration = `${1.6 + Math.random() * 1.6}s`;
+    span.style.animationDelay = `${Math.random() * 0.25}s`;
+    document.body.appendChild(span);
+    setTimeout(() => span.remove(), 3500);
+  }
 }
 
 function pickRandomId() {
@@ -219,9 +260,20 @@ function showLeaderboardModal() {
 
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 
+function renderLocalStatsCard() {
+  const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0}');
+  const winRate = s.rounds ? Math.round((s.wins / s.rounds) * 100) : 0;
+  return `
+    <div class="stats-card">
+      <div class="stat"><span class="label">Your score</span><span class="value">${s.total}</span></div>
+      <div class="stat"><span class="label">Wins</span><span class="value">${s.wins}/${s.rounds}</span></div>
+      <div class="stat"><span class="label">Win %</span><span class="value">${winRate}%</span></div>
+    </div>`;
+}
+
 async function loadLeaderboard() {
   const el = $("leaderboard-list");
-  el.textContent = "Loading…";
+  el.innerHTML = renderLocalStatsCard() + '<p class="sub">Loading global scores…</p>';
   try {
     const res = await fetch("/api/leaderboard");
     if (!res.ok) {
@@ -230,22 +282,30 @@ async function loadLeaderboard() {
     }
     const data = await res.json();
     const scores = data.scores || [];
-    if (!scores.length) {
-      el.innerHTML = '<p class="sub">No scores yet — be the first to win a round!</p>';
-      return;
-    }
-    el.innerHTML = `
-      <table class="leaderboard">
-        <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Rounds</th></tr></thead>
-        <tbody>
-          ${scores.map((s, i) => {
-            const me = state.username && s.username === state.username ? " class='me'" : "";
-            return `<tr${me}><td>${i + 1}</td><td>@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
-          }).join("")}
-        </tbody>
-      </table>`;
+    const top = scores.length
+      ? `<table class="leaderboard">
+          <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Rounds</th></tr></thead>
+          <tbody>
+            ${scores.map((s, i) => {
+              const me = state.username && s.username === state.username ? " class='me'" : "";
+              return `<tr${me}><td>${i + 1}</td><td>@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>`
+      : '<p class="sub">No scores yet — be the first to win a round!</p>';
+    el.innerHTML = renderLocalStatsCard() + top;
   } catch (e) {
-    el.innerHTML = `<p class="err">Leaderboard not available yet. (${e.message})</p>`;
+    el.innerHTML = renderLocalStatsCard() + `
+      <div class="setup-hint">
+        <strong>Global leaderboard isn't live yet.</strong>
+        Your scores still count locally. To enable the shared leaderboard:
+        <ol>
+          <li>vercel.com → baseball-guess → <strong>Storage</strong> tab</li>
+          <li>Click <strong>Create Database</strong> → pick <strong>Upstash for Redis</strong> (free Hobby)</li>
+          <li><strong>Connect</strong> to the project</li>
+          <li>Deployments → latest → ⋯ → <strong>Redeploy</strong></li>
+        </ol>
+      </div>`;
   }
 }
 
