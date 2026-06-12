@@ -1,0 +1,51 @@
+name: Refresh player data
+
+on:
+  # Weekly during the offseason; bumped to daily-ish during the season is also fine.
+  schedule:
+    - cron: "0 11 * * 1"   # Monday 11:00 UTC = ~7am ET
+  workflow_dispatch:        # manual trigger from the Actions tab
+
+permissions:
+  contents: write           # needed to push the data refresh commit
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download bWAR + Lahman People.csv
+        run: |
+          mkdir -p data/raw
+          curl -sSL -A "baseball-guess refresh bot" \
+            -o data/raw/war_bat.txt \
+            "https://www.baseball-reference.com/data/war_daily_bat.txt"
+          curl -sSL -A "baseball-guess refresh bot" \
+            -o data/raw/war_pit.txt \
+            "https://www.baseball-reference.com/data/war_daily_pitch.txt"
+          # People.csv gives us birth years (for the Age column on appended rows)
+          curl -sSL \
+            -o data/raw/People.csv \
+            "https://raw.githubusercontent.com/xorq-labs/baseballdatabank/master/core/People.csv"
+          ls -lh data/raw/
+
+      - name: Run update_recent.py
+        run: python3 update_recent.py
+
+      - name: Commit + push if data changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/players data/manifest.json
+          if git diff --cached --quiet; then
+            echo "No data changes."
+            exit 0
+          fi
+          changed=$(git diff --cached --name-only | wc -l)
+          git commit -m "Auto-refresh player data ($(date -u +%Y-%m-%d), ${changed} files)"
+          git push
