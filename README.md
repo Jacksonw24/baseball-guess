@@ -34,4 +34,16 @@ python3 -m http.server 8000
 
 ## Deploy
 
-The site is fully static. Push to GitHub, connect the repo on [vercel.com/new](https://vercel.com/new), no build step needed.
+The static site needs no build step. Push to GitHub, connect the repo on [vercel.com/new](https://vercel.com/new).
+
+### Enabling the leaderboard
+
+The `/api/leaderboard` endpoint needs Vercel KV (Upstash Redis) connected. One-time setup:
+
+1. Open the project on [vercel.com](https://vercel.com) → **Storage** tab.
+2. Click **Create Database** (or **Connect Store**). Choose **KV** / **Upstash for Redis** (the dashboard may label it either way).
+3. Accept the defaults (free Hobby tier).
+4. Click **Connect** to attach it to the `baseball-guess` project. This auto-injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
+5. **Redeploy** once (Deployments → latest → ⋯ → Redeploy) so the function picks up the new env vars.
+
+Until KV is connected, the leaderboard UI gracefully shows "Leaderboard not available yet"; the rest of the game still works.
