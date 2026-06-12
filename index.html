@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1d3a">
+<title>Who's the Ballplayer?</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main id="app">
+  <header>
+    <h1>Who's the Ballplayer?</h1>
+    <p class="sub">Identify the MLB player from their stat line.</p>
+  </header>
+
+  <section id="controls">
+    <label for="tier">Difficulty</label>
+    <select id="tier">
+      <option value="famous">Famous — HoFers + MVPs (~600)</option>
+      <option value="pros">Pros — 5,000+ career PA (~1,800)</option>
+      <option value="alltime">All-time — 400+ career PA (~11,000)</option>
+    </select>
+  </section>
+
+  <section id="status">
+    <span id="round">Round —</span>
+    <span id="score">Score: 0</span>
+    <span id="guesses">Guesses: 0</span>
+  </section>
+
+  <section id="table-wrap" aria-live="polite">
+    <div id="table-loading">Loading stat line…</div>
+  </section>
+
+  <section id="guess-area">
+    <form id="guess-form" autocomplete="off">
+      <input id="guess-input" type="text" placeholder="Type the player's name…" autocomplete="off" autocapitalize="words">
+      <button type="submit" id="guess-btn">Guess</button>
+    </form>
+    <div class="row">
+      <button id="hint-btn" type="button">Hint</button>
+      <button id="giveup-btn" type="button">Give up</button>
+    </div>
+    <p id="feedback"></p>
+    <div id="hint-box" hidden></div>
+  </section>
+
+  <section id="result" hidden>
+    <h2 id="result-headline"></h2>
+    <p id="result-detail"></p>
+    <a id="br-link" href="#" target="_blank" rel="noopener">View on Baseball Reference →</a>
+    <button id="next-btn" type="button">Next player</button>
+  </section>
+
+  <footer>
+    <small>Data: Lahman Database (through 2021) + Sean Smith bWAR</small>
+  </footer>
+</main>
+<script src="game.js"></script>
+</body>
+</html>

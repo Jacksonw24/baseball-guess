@@ -1,0 +1,12 @@
+# Raw source data — regenerate locally with prefetch.py, don't ship to git
+data/raw/
+
+# Build artifacts / OS noise
+.DS_Store
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+
+# Local servers / logs
+*.log
