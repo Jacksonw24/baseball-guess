@@ -16,14 +16,28 @@
   </header>
 
   <section id="controls">
-    <label for="tier">Difficulty</label>
-    <select id="tier">
-      <option value="famous">Famous — recognizable names</option>
-      <option value="pros">Pros — full-time MLB careers</option>
-      <option value="alltime">All-time — anyone w/ 400+ PA</option>
+    <select id="tier" aria-label="Difficulty">
+      <option value="famous">Famous</option>
+      <option value="pros">Pros</option>
+      <option value="alltime">All-time</option>
+    </select>
+    <select id="era" aria-label="Era">
+      <option value="all">All eras</option>
+      <option value="2000s">2000s</option>
+      <option value="2010s">2010s</option>
+      <option value="2020s">2020s</option>
+    </select>
+    <select id="pos" aria-label="Position">
+      <option value="all">All positions</option>
+      <option value="P">Pitchers</option>
+      <option value="C">Catchers</option>
+      <option value="IF">Infield</option>
+      <option value="OF">Outfield</option>
+      <option value="DH">DH</option>
     </select>
     <button id="leaderboard-btn" type="button" class="ghost" title="Show leaderboard">🏆</button>
   </section>
+  <p id="pool-count" class="sub"></p>
 
   <section id="status">
     <span id="username-pill">@—</span>
@@ -38,7 +52,12 @@
 
   <section id="guess-area">
     <form id="guess-form" autocomplete="off">
-      <input id="guess-input" type="text" placeholder="Type the player's name…" autocomplete="off" autocapitalize="words">
+      <div class="ac-wrap">
+        <input id="guess-input" type="text" placeholder="Type the player's name…"
+               autocomplete="off" autocapitalize="words" spellcheck="false"
+               aria-autocomplete="list" aria-controls="ac-list">
+        <ul id="ac-list" class="ac-list" hidden></ul>
+      </div>
       <button type="submit" id="guess-btn">Guess</button>
     </form>
     <div class="row">

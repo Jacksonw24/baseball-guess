@@ -8,9 +8,17 @@ const HINT_LABELS = [
 
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{2,20}$/;
 
+const ERA_RANGES = {
+  "2000s": [2000, 2009],
+  "2010s": [2010, 2019],
+  "2020s": [2020, 2029],
+};
+
 const state = {
   manifest: null,
   tier: localStorage.getItem("bg.tier") || "famous",
+  era:  localStorage.getItem("bg.era")  || "all",
+  pos:  localStorage.getItem("bg.pos")  || "all",
   username: localStorage.getItem("bg.username") || "",
   player: null,
   hidden: new Set(),
@@ -21,9 +29,19 @@ const state = {
   round: 0,
   finished: false,
   recent: [],
+  ac: { items: [], active: -1, query: "" },
 };
 
 const $ = (id) => document.getElementById(id);
+
+function normalize(s) {
+  return s.normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeGuess(s) {
+  return normalize(s).replace(/\s+(jr|sr|ii|iii|iv)$/, "");
+}
 
 function setFeedback(msg, cls = "") {
   const el = $("feedback");
@@ -53,6 +71,34 @@ function renderTable() {
   wrap.innerHTML = `<div class="scroll"><table class="stats">${caption}<thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
 }
 
+// ---------- Pool filtering ----------
+
+function getFilteredPool() {
+  const base = state.manifest?.[state.tier] || [];
+  const [eraLo, eraHi] = ERA_RANGES[state.era] || [];
+  const pos = state.pos === "all" ? null : state.pos;
+  return base.filter(e => {
+    if (pos && e.p !== pos) return false;
+    if (eraLo != null) {
+      if (e.l == null || e.f == null) return false;
+      if (e.l < eraLo || e.f > eraHi) return false;
+    }
+    return true;
+  });
+}
+
+function renderPoolCount(pool) {
+  const el = $("pool-count");
+  if (!el) return;
+  const parts = [];
+  if (state.era !== "all")  parts.push(state.era);
+  if (state.pos !== "all")  parts.push(({P:"pitchers",C:"catchers",IF:"infield",OF:"outfield",DH:"DH"})[state.pos]);
+  const suffix = parts.length ? ` (${parts.join(", ")})` : "";
+  el.textContent = `${pool.length} player${pool.length === 1 ? "" : "s"} in pool${suffix}`;
+}
+
+// ---------- Score posting ----------
+
 async function postScore(points) {
   if (!state.username || points <= 0) return;
   try {
@@ -61,10 +107,10 @@ async function postScore(points) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: state.username, points }),
     });
-  } catch (e) {
-    // Silently ignore — leaderboard is optional.
-  }
+  } catch (e) {}
 }
+
+// ---------- Show result + celebrate ----------
 
 function showResult(won) {
   state.finished = true;
@@ -80,7 +126,7 @@ function showResult(won) {
   const points = won ? Math.max(10 - state.guesses - state.hintsUsed * 2, 1) : 0;
   state.score += points;
   localStorage.setItem("bg.score", String(state.score));
-  // Local stats for the fallback leaderboard view
+
   const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0}');
   localStats.rounds += 1;
   if (won) {
@@ -101,20 +147,14 @@ function showResult(won) {
 }
 
 function celebrate(resultEl) {
-  // Pulse the result card
   resultEl.classList.add("win-pulse");
   setTimeout(() => resultEl.classList.remove("win-pulse"), 1300);
-
-  // Radial green flash
   const flash = document.createElement("div");
   flash.className = "flash-bg";
   document.body.appendChild(flash);
   setTimeout(() => flash.remove(), 900);
-
-  // Confetti burst — baseballs + green hearts + sparks
   const emojis = ["⚾", "⚾", "⚾", "💚", "🟢", "✨", "🎉"];
-  const count = 28;
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < 28; i++) {
     const span = document.createElement("span");
     span.className = "confetti";
     span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
@@ -127,9 +167,10 @@ function celebrate(resultEl) {
   }
 }
 
-function pickRandomId() {
-  const pool = state.manifest[state.tier];
-  if (!pool || !pool.length) return null;
+// ---------- Round lifecycle ----------
+
+function pickRandomId(pool) {
+  if (!pool.length) return null;
   const exclude = new Set(state.recent.slice(-30));
   let pick;
   for (let tries = 0; tries < 20; tries++) {
@@ -155,11 +196,20 @@ async function newRound() {
   $("guess-area").hidden = false;
   $("result").hidden = true;
   $("guess-input").value = "";
+  closeAutocomplete();
   $("table-wrap").innerHTML = '<div id="table-loading">Loading stat line…</div>';
   renderStatus();
 
-  const id = pickRandomId();
-  if (!id) { setFeedback("No players in this tier.", "bad"); return; }
+  const pool = getFilteredPool();
+  renderPoolCount(pool);
+  if (!pool.length) {
+    setFeedback("No players match these filters. Try widening Era or Position.", "bad");
+    $("table-wrap").innerHTML = "";
+    return;
+  }
+
+  const id = pickRandomId(pool);
+  if (!id) return;
 
   try {
     const res = await fetch(`data/players/${id}.json`);
@@ -188,14 +238,8 @@ function revealHint() {
   state.hintsUsed += 1;
 }
 
-function normalize(s) {
-  return s.normalize("NFKD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim()
-    .replace(/\s+(jr|sr|ii|iii|iv)$/, "");
-}
-
 function matchesLocal(guess, name) {
-  const g = normalize(guess), n = normalize(name);
+  const g = normalizeGuess(guess), n = normalizeGuess(name);
   if (!g) return false;
   if (g === n) return true;
   const last = n.split(" ").pop();
@@ -206,13 +250,16 @@ function matchesLocal(guess, name) {
 async function submitGuess(e) {
   e.preventDefault();
   if (state.finished || !state.player) return;
+  // If the autocomplete has a highlighted item, prefer that
+  if (state.ac.active >= 0 && state.ac.items[state.ac.active]) {
+    $("guess-input").value = state.ac.items[state.ac.active].name;
+  }
+  closeAutocomplete();
   const guess = $("guess-input").value.trim();
   if (!guess) return;
   state.guesses += 1;
   renderStatus();
-
   if (matchesLocal(guess, state.player.name)) { showResult(true); return; }
-
   $("guess-input").value = "";
   setFeedback(`Not "${guess}" — try again.`, "bad");
   if (state.guesses >= 6) showResult(false);
@@ -226,6 +273,89 @@ function onTierChange(e) {
   localStorage.setItem("bg.tier", state.tier);
   newRound();
 }
+function onEraChange(e) {
+  state.era = e.target.value;
+  localStorage.setItem("bg.era", state.era);
+  newRound();
+}
+function onPosChange(e) {
+  state.pos = e.target.value;
+  localStorage.setItem("bg.pos", state.pos);
+  newRound();
+}
+
+// ---------- Autocomplete ----------
+
+function updateAutocomplete() {
+  const raw = $("guess-input").value;
+  const q = normalize(raw);
+  state.ac.query = q;
+  state.ac.active = -1;
+
+  if (!q || q.length < 1) { closeAutocomplete(); return; }
+
+  const pool = getFilteredPool();
+  const matches = [];
+  for (const e of pool) {
+    if (!e._n) e._n = normalize(e.name);
+    const n = e._n;
+    if (n.startsWith(q) || n.includes(" " + q)) {
+      matches.push({ ...e, _starts: n.startsWith(q) ? 0 : 1 });
+      if (matches.length >= 30) break;  // cap initial scan for perf
+    }
+  }
+  matches.sort((a, b) => a._starts - b._starts || a.name.length - b.name.length);
+  state.ac.items = matches.slice(0, 6);
+  renderAutocomplete();
+}
+
+function renderAutocomplete() {
+  const ul = $("ac-list");
+  if (!state.ac.items.length) { ul.hidden = true; ul.innerHTML = ""; return; }
+  ul.innerHTML = state.ac.items.map((e, i) => {
+    const cls = i === state.ac.active ? " class='ac-item active'" : " class='ac-item'";
+    return `<li${cls} data-idx="${i}">${escapeHtml(e.name)}</li>`;
+  }).join("");
+  ul.hidden = false;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+}
+
+function closeAutocomplete() {
+  state.ac.items = []; state.ac.active = -1;
+  const ul = $("ac-list");
+  if (ul) { ul.hidden = true; ul.innerHTML = ""; }
+}
+
+function selectSuggestion(idx) {
+  const e = state.ac.items[idx];
+  if (!e) return;
+  $("guess-input").value = e.name;
+  closeAutocomplete();
+  // Auto-submit on tap-select
+  $("guess-form").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+}
+
+function onGuessKeydown(ev) {
+  if (!state.ac.items.length) return;
+  if (ev.key === "ArrowDown") {
+    ev.preventDefault();
+    state.ac.active = (state.ac.active + 1) % state.ac.items.length;
+    renderAutocomplete();
+  } else if (ev.key === "ArrowUp") {
+    ev.preventDefault();
+    state.ac.active = (state.ac.active - 1 + state.ac.items.length) % state.ac.items.length;
+    renderAutocomplete();
+  } else if (ev.key === "Escape") {
+    closeAutocomplete();
+  } else if (ev.key === "Tab" && state.ac.active >= 0) {
+    ev.preventDefault();
+    $("guess-input").value = state.ac.items[state.ac.active].name;
+    closeAutocomplete();
+  }
+}
 
 // ---------- Username modal ----------
 
@@ -234,9 +364,7 @@ function showUsernameModal() {
   $("username-input").value = state.username || "";
   $("username-input").focus();
 }
-
 function hideUsernameModal() { $("username-modal").hidden = true; }
-
 function saveUsername(e) {
   e.preventDefault();
   const v = $("username-input").value.trim();
@@ -257,7 +385,6 @@ function showLeaderboardModal() {
   $("leaderboard-modal").hidden = false;
   loadLeaderboard();
 }
-
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 
 function renderLocalStatsCard() {
@@ -319,9 +446,12 @@ async function init() {
     setFeedback("Couldn't load player list. Refresh to try again.", "bad");
     return;
   }
-  const tierSel = $("tier");
-  tierSel.value = state.tier;
-  tierSel.addEventListener("change", onTierChange);
+  $("tier").value = state.tier;
+  $("era").value  = state.era;
+  $("pos").value  = state.pos;
+  $("tier").addEventListener("change", onTierChange);
+  $("era").addEventListener("change", onEraChange);
+  $("pos").addEventListener("change", onPosChange);
   $("guess-form").addEventListener("submit", submitGuess);
   $("hint-btn").addEventListener("click", revealHint);
   $("giveup-btn").addEventListener("click", giveUp);
@@ -330,6 +460,15 @@ async function init() {
   $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
   $("username-form").addEventListener("submit", saveUsername);
   $("username-pill").addEventListener("click", showUsernameModal);
+
+  // Autocomplete
+  $("guess-input").addEventListener("input", updateAutocomplete);
+  $("guess-input").addEventListener("keydown", onGuessKeydown);
+  $("guess-input").addEventListener("blur", () => setTimeout(closeAutocomplete, 150));
+  $("ac-list").addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-idx]");
+    if (li) { e.preventDefault(); selectSuggestion(parseInt(li.dataset.idx, 10)); }
+  });
 
   renderStatus();
   if (!state.username) showUsernameModal();
