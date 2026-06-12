@@ -6,9 +6,12 @@ const HINT_LABELS = [
   "Last-name initial",
 ];
 
+const USERNAME_RE = /^[A-Za-z0-9_.\-]{2,20}$/;
+
 const state = {
   manifest: null,
   tier: localStorage.getItem("bg.tier") || "famous",
+  username: localStorage.getItem("bg.username") || "",
   player: null,
   hidden: new Set(),
   revealed: false,
@@ -17,7 +20,7 @@ const state = {
   score: parseInt(localStorage.getItem("bg.score") || "0", 10),
   round: 0,
   finished: false,
-  recent: [], // ids seen recently, to avoid repeats
+  recent: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +32,7 @@ function setFeedback(msg, cls = "") {
 }
 
 function renderStatus() {
+  $("username-pill").textContent = state.username ? `@${state.username}` : "@—";
   $("round").textContent = `Round ${state.round}`;
   $("score").textContent = `Score: ${state.score}`;
   $("guesses").textContent = `Guesses: ${state.guesses}`;
@@ -41,14 +45,25 @@ function renderTable() {
   const visibleHeaders = p.headers
     .map((h, idx) => ({ ...h, idx }))
     .filter(h => !state.hidden.has(h.stat));
-
   const thead = `<tr>${visibleHeaders.map(h => `<th title="${h.stat}">${h.label}</th>`).join("")}</tr>`;
   const tbody = p.rows.map(row =>
     `<tr>${visibleHeaders.map(h => `<td>${row[h.idx] ?? ""}</td>`).join("")}</tr>`
   ).join("");
-
   const caption = `<caption>${p.kind === "pitching" ? "Standard Pitching" : "Standard Batting"}</caption>`;
   wrap.innerHTML = `<div class="scroll"><table class="stats">${caption}<thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+}
+
+async function postScore(points) {
+  if (!state.username || points <= 0) return;
+  try {
+    await fetch("/api/leaderboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: state.username, points }),
+    });
+  } catch (e) {
+    // Silently ignore — leaderboard is optional.
+  }
 }
 
 function showResult(won) {
@@ -68,12 +83,12 @@ function showResult(won) {
     ? `It was ${state.player.name}. +${points} point${points === 1 ? "" : "s"} (${state.guesses} guesses, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}).`
     : `It was ${state.player.name}.`;
   $("br-link").href = state.player.br_url;
+  if (won) postScore(points);
 }
 
 function pickRandomId() {
   const pool = state.manifest[state.tier];
   if (!pool || !pool.length) return null;
-  // Avoid the last 30 ids if we have enough pool depth
   const exclude = new Set(state.recent.slice(-30));
   let pick;
   for (let tries = 0; tries < 20; tries++) {
@@ -103,10 +118,7 @@ async function newRound() {
   renderStatus();
 
   const id = pickRandomId();
-  if (!id) {
-    setFeedback("No players in this tier.", "bad");
-    return;
-  }
+  if (!id) { setFeedback("No players in this tier.", "bad"); return; }
 
   try {
     const res = await fetch(`data/players/${id}.json`);
@@ -115,7 +127,7 @@ async function newRound() {
     state.hidden = new Set(state.player.hidden_cols || []);
   } catch (e) {
     setFeedback(`Couldn't load player (${id}). Trying another…`, "bad");
-    return newRound();  // retry
+    return newRound();
   }
   renderTable();
   setFeedback("");
@@ -125,10 +137,7 @@ async function newRound() {
 function revealHint() {
   if (state.finished || !state.player) return;
   const hints = state.player.hints || [];
-  if (state.hintsUsed >= hints.length) {
-    setFeedback("No more hints.", "bad");
-    return;
-  }
+  if (state.hintsUsed >= hints.length) { setFeedback("No more hints.", "bad"); return; }
   const box = $("hint-box");
   box.hidden = false;
   const div = document.createElement("div");
@@ -161,29 +170,86 @@ async function submitGuess(e) {
   state.guesses += 1;
   renderStatus();
 
-  if (matchesLocal(guess, state.player.name)) {
-    showResult(true);
-    return;
-  }
+  if (matchesLocal(guess, state.player.name)) { showResult(true); return; }
 
   $("guess-input").value = "";
   setFeedback(`Not "${guess}" — try again.`, "bad");
-  if (state.guesses >= 6) {
-    showResult(false);
-  } else {
-    $("guess-input").focus();
-  }
+  if (state.guesses >= 6) showResult(false);
+  else $("guess-input").focus();
 }
 
-function giveUp() {
-  if (!state.finished) showResult(false);
-}
+function giveUp() { if (!state.finished) showResult(false); }
 
 function onTierChange(e) {
   state.tier = e.target.value;
   localStorage.setItem("bg.tier", state.tier);
   newRound();
 }
+
+// ---------- Username modal ----------
+
+function showUsernameModal() {
+  $("username-modal").hidden = false;
+  $("username-input").value = state.username || "";
+  $("username-input").focus();
+}
+
+function hideUsernameModal() { $("username-modal").hidden = true; }
+
+function saveUsername(e) {
+  e.preventDefault();
+  const v = $("username-input").value.trim();
+  if (!USERNAME_RE.test(v)) {
+    $("username-error").textContent = "2–20 chars: letters, numbers, _ . -";
+    return;
+  }
+  state.username = v;
+  localStorage.setItem("bg.username", v);
+  $("username-error").textContent = "";
+  hideUsernameModal();
+  renderStatus();
+}
+
+// ---------- Leaderboard modal ----------
+
+function showLeaderboardModal() {
+  $("leaderboard-modal").hidden = false;
+  loadLeaderboard();
+}
+
+function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
+
+async function loadLeaderboard() {
+  const el = $("leaderboard-list");
+  el.textContent = "Loading…";
+  try {
+    const res = await fetch("/api/leaderboard");
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const scores = data.scores || [];
+    if (!scores.length) {
+      el.innerHTML = '<p class="sub">No scores yet — be the first to win a round!</p>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="leaderboard">
+        <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Rounds</th></tr></thead>
+        <tbody>
+          ${scores.map((s, i) => {
+            const me = state.username && s.username === state.username ? " class='me'" : "";
+            return `<tr${me}><td>${i + 1}</td><td>@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<p class="err">Leaderboard not available yet. (${e.message})</p>`;
+  }
+}
+
+// ---------- init ----------
 
 async function init() {
   try {
@@ -200,7 +266,13 @@ async function init() {
   $("hint-btn").addEventListener("click", revealHint);
   $("giveup-btn").addEventListener("click", giveUp);
   $("next-btn").addEventListener("click", newRound);
+  $("leaderboard-btn").addEventListener("click", showLeaderboardModal);
+  $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
+  $("username-form").addEventListener("submit", saveUsername);
+  $("username-pill").addEventListener("click", showUsernameModal);
+
   renderStatus();
+  if (!state.username) showUsernameModal();
   newRound();
 }
 

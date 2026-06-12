@@ -12,19 +12,21 @@
 <main id="app">
   <header>
     <h1>Who's the Ballplayer?</h1>
-    <p class="sub">Identify the MLB player from their stat line.</p>
+    <p class="sub">Identify the MLB player from their stat line. Players from 2000+.</p>
   </header>
 
   <section id="controls">
     <label for="tier">Difficulty</label>
     <select id="tier">
-      <option value="famous">Famous — HoFers + MVPs (~600)</option>
-      <option value="pros">Pros — 5,000+ career PA (~1,800)</option>
-      <option value="alltime">All-time — 400+ career PA (~11,000)</option>
+      <option value="famous">Famous — recognizable names</option>
+      <option value="pros">Pros — full-time MLB careers</option>
+      <option value="alltime">All-time — anyone w/ 400+ PA</option>
     </select>
+    <button id="leaderboard-btn" type="button" class="ghost" title="Show leaderboard">🏆</button>
   </section>
 
   <section id="status">
+    <span id="username-pill">@—</span>
     <span id="round">Round —</span>
     <span id="score">Score: 0</span>
     <span id="guesses">Guesses: 0</span>
@@ -55,9 +57,32 @@
   </section>
 
   <footer>
-    <small>Data: Lahman Database (through 2021) + Sean Smith bWAR</small>
+    <small>Data: Lahman + MLB Stats API + Sean Smith bWAR</small>
   </footer>
 </main>
+
+<div id="username-modal" class="modal" hidden>
+  <div class="modal-card">
+    <h2>Pick a username</h2>
+    <p class="sub">2–20 characters: letters, numbers, underscore, dot, or dash. Shown on the leaderboard.</p>
+    <form id="username-form" autocomplete="off">
+      <input id="username-input" type="text" maxlength="20" autocomplete="off" placeholder="e.g. jackson_w">
+      <button type="submit">Save</button>
+    </form>
+    <p id="username-error" class="err"></p>
+  </div>
+</div>
+
+<div id="leaderboard-modal" class="modal" hidden>
+  <div class="modal-card wide">
+    <div class="modal-header">
+      <h2>Leaderboard</h2>
+      <button id="leaderboard-close" type="button" class="ghost">✕</button>
+    </div>
+    <div id="leaderboard-list">Loading…</div>
+  </div>
+</div>
+
 <script src="game.js"></script>
 </body>
 </html>
