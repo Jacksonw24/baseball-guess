@@ -225,7 +225,7 @@ def build_batting_row(player: dict, r: dict) -> dict:
     return {
         "year_id": year,
         "age": age_at(int(year), birth),
-        "team_name_abbr": r["teamID"],
+        "team_name_abbr": norm_team(r["teamID"]),
         "comp_name_abbr": r["lgID"],
         "b_war": f"{war:.1f}" if war else "",
         "b_games": r["G"],
@@ -263,7 +263,7 @@ def build_pitching_row(player: dict, r: dict) -> dict:
     return {
         "year_id": year,
         "age": age_at(int(year), birth),
-        "team_name_abbr": r["teamID"],
+        "team_name_abbr": norm_team(r["teamID"]),
         "comp_name_abbr": r["lgID"],
         "p_war": f"{war:.1f}" if war else "",
         "p_w": r["W"], "p_l": r["L"],

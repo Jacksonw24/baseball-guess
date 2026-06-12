@@ -112,6 +112,32 @@ for war_file in ("war_bat.txt", "war_pit.txt"):
                 except ValueError: pass
 print(f"  age lookup entries: {len(age_by_bbref_year)}")
 
+# Normalize team codes (Lahman + MLB API variants) to BR's modern style.
+# Historical-city codes (BRO, BSN, WS1, PHA, MON, etc.) intentionally kept distinct.
+TEAM_NORMALIZE = {
+    "NYA": "NYY",
+    "NYN": "NYM",
+    "CHN": "CHC",
+    "CHA": "CHW", "CWS": "CHW",
+    "SLN": "STL",
+    "LAN": "LAD",
+    "SFN": "SFG", "SF": "SFG",
+    "SDN": "SDP", "SD": "SDP",
+    "KCA": "KCR", "KC": "KCR",
+    "TBA": "TBR", "TB": "TBR", "TBD": "TBR",
+    "CAL": "LAA", "ANA": "LAA",
+    "FLO": "MIA", "FLA": "MIA",
+    "WAS": "WSN", "WSH": "WSN",
+    "ATH": "OAK",
+    "ML4": "MIL",
+    "AZ":  "ARI",
+}
+
+
+def norm_team(t: str) -> str:
+    return TEAM_NORMALIZE.get(t, t) if t else t
+
+
 # Team abbreviation → league. Covers both MLB Stats API and bWAR styles.
 TEAM_TO_LG = {
     # AL
@@ -275,7 +301,7 @@ def fetch_person(mlb_id: str) -> dict:
 def build_batting_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int | None) -> dict:
     s = split["stat"]
     year = str(split.get("season", ""))
-    team = split.get("team", {}).get("abbreviation", "")
+    team = norm_team(split.get("team", {}).get("abbreviation", ""))
     age_lookup = age_by_bbref_year.get((bb_slug, year))
     age = str(age_lookup) if age_lookup else (str(int(year) - birth_year) if (birth_year and year) else "")
     lg = TEAM_TO_LG.get(team.upper(), "")
@@ -319,7 +345,7 @@ def build_batting_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int | 
 def build_pitching_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int | None) -> dict:
     s = split["stat"]
     year = str(split.get("season", ""))
-    team = split.get("team", {}).get("abbreviation", "")
+    team = norm_team(split.get("team", {}).get("abbreviation", ""))
     age_lookup = age_by_bbref_year.get((bb_slug, year))
     age = str(age_lookup) if age_lookup else (str(int(year) - birth_year) if (birth_year and year) else "")
     lg = TEAM_TO_LG.get(team.upper(), "")
