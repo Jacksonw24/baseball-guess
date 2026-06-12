@@ -99,6 +99,34 @@ with open(RAW / "war_pit.txt", newline="") as fh:
 
 print(f"  bWAR has {len(players_with_recent_bat | players_with_recent_pit)} players with {NEW_YEARS[0]}+ data")
 
+# Age from bWAR (works for everyone with a 2022+ stint, including brand-new players)
+age_by_bbref_year: dict[tuple[str, str], int] = {}
+for war_file in ("war_bat.txt", "war_pit.txt"):
+    with open(RAW / war_file, newline="") as fh:
+        for r in csv.DictReader(fh):
+            slug = r.get("player_ID") or ""
+            year = r.get("year_ID") or ""
+            age  = r.get("age") or ""
+            if slug and year and age:
+                try: age_by_bbref_year[(slug, year)] = int(age)
+                except ValueError: pass
+print(f"  age lookup entries: {len(age_by_bbref_year)}")
+
+# Team abbreviation → league. Covers both MLB Stats API and bWAR styles.
+TEAM_TO_LG = {
+    # AL
+    "BAL":"AL","BOS":"AL","CHW":"AL","CWS":"AL","CHA":"AL","CLE":"AL","DET":"AL",
+    "HOU":"AL","KC":"AL","KCR":"AL","KCA":"AL","LAA":"AL","ANA":"AL","CAL":"AL",
+    "MIN":"AL","NYY":"AL","NYA":"AL","OAK":"AL","ATH":"AL","PHA":"AL","SEA":"AL",
+    "TB":"AL","TBR":"AL","TBD":"AL","TEX":"AL","TOR":"AL","WSA":"AL","SLB":"AL",
+    # NL
+    "ARI":"NL","ATL":"NL","BSN":"NL","MLN":"NL","CHC":"NL","CHN":"NL","CIN":"NL",
+    "COL":"NL","LAD":"NL","LAN":"NL","BRO":"NL","MIA":"NL","FLA":"NL","MIL":"NL",
+    "NYM":"NL","NYN":"NL","NYG":"NL","PHI":"NL","PIT":"NL","SD":"NL","SDP":"NL",
+    "SDN":"NL","SF":"NL","SFG":"NL","SFN":"NL","STL":"NL","SLN":"NL",
+    "WSH":"NL","WSN":"NL","MON":"NL",
+}
+
 # Birth years + bats/throws + Lahman ID map from People.csv
 birth_year_by_bbref: dict[str, int] = {}
 bats_by_bbref: dict[str, str] = {}
@@ -248,7 +276,9 @@ def build_batting_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int | 
     s = split["stat"]
     year = str(split.get("season", ""))
     team = split.get("team", {}).get("abbreviation", "")
-    age = str(int(year) - birth_year) if (birth_year and year) else ""
+    age_lookup = age_by_bbref_year.get((bb_slug, year))
+    age = str(age_lookup) if age_lookup else (str(int(year) - birth_year) if (birth_year and year) else "")
+    lg = TEAM_TO_LG.get(team.upper(), "")
     war = war_bat_year.get((bb_slug, year), 0.0)
     ops_plus = ops_plus_year.get((bb_slug, year), 0.0)
     ab = int(s.get("atBats", 0))
@@ -262,7 +292,7 @@ def build_batting_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int | 
         "_pa": pa, "_h": h, "_hr": int(s.get("homeRuns", 0)),
         "_ab": ab, "_war": war, "_year": year,
         "row": [
-            year, age, team, "",
+            year, age, team, lg,
             f"{war:.1f}" if war else "",
             str(s.get("gamesPlayed", "")),
             str(pa) if pa else "",
@@ -290,7 +320,9 @@ def build_pitching_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int |
     s = split["stat"]
     year = str(split.get("season", ""))
     team = split.get("team", {}).get("abbreviation", "")
-    age = str(int(year) - birth_year) if (birth_year and year) else ""
+    age_lookup = age_by_bbref_year.get((bb_slug, year))
+    age = str(age_lookup) if age_lookup else (str(int(year) - birth_year) if (birth_year and year) else "")
+    lg = TEAM_TO_LG.get(team.upper(), "")
     war = war_pit_year.get((bb_slug, year), 0.0)
     era_plus = era_plus_year.get((bb_slug, year), 0.0)
     ipouts = parse_innings(s.get("inningsPitched", ""))
@@ -302,7 +334,7 @@ def build_pitching_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int |
         "_war": war,
         "_year": year,
         "row": [
-            year, age, team, "",
+            year, age, team, lg,
             f"{war:.1f}" if war else "",
             str(s.get("wins", "")),
             str(s.get("losses", "")),
