@@ -41,6 +41,18 @@ def fmt_ip(ipouts):
     full, rem = divmod(int(ipouts), 3)
     return f"{full}.{rem}"
 
+TEAM_NORMALIZE = {
+    "NYA":"NYY","NYN":"NYM","CHN":"CHC","CHA":"CHW","CWS":"CHW",
+    "SLN":"STL","LAN":"LAD","SFN":"SFG","SF":"SFG","SDN":"SDP","SD":"SDP",
+    "KCA":"KCR","KC":"KCR","TBA":"TBR","TB":"TBR","TBD":"TBR",
+    "CAL":"LAA","ANA":"LAA","FLO":"MIA","FLA":"MIA",
+    "WAS":"WSN","WSH":"WSN","ATH":"OAK","ML4":"MIL","AZ":"ARI",
+}
+
+def norm_team(t):
+    return TEAM_NORMALIZE.get(t, t) if t else t
+
+
 def safe_div(num, den):
     return num / den if den else 0.0
 
