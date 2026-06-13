@@ -96,7 +96,45 @@ button.ghost {
   width: 100%;
   display: flex; flex-direction: column; gap: 14px;
 }
-.modal-card.wide { max-width: 560px; max-height: 80vh; overflow-y: auto; }
+.modal-card.wide { max-width: 560px; max-height: 85vh; overflow-y: auto; }
+.intro-card .intro-section {
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.intro-card .intro-section h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.intro-card .intro-section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.intro-card .intro-section li { margin-bottom: 4px; }
+.intro-card .intro-section li code {
+  font-size: 12px;
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.intro-card .intro-extreme {
+  background: rgba(239,68,68,0.10);
+  border: 1px solid rgba(239,68,68,0.3);
+}
+.intro-card .intro-extreme h3 { color: #fca5a5; }
+.intro-card > h3 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 .modal-card h2 { margin: 0; font-size: 20px; }
 .modal-card .sub { margin: 0; font-size: 13px; color: var(--muted); }
 .modal-header {

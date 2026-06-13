@@ -106,12 +106,42 @@
 </main>
 
 <div id="username-modal" class="modal" hidden>
-  <div class="modal-card">
-    <h2>Pick a username</h2>
+  <div class="modal-card wide intro-card">
+    <h2>Who's the Ballplayer?</h2>
+    <p class="sub">Identify MLB players from their year-by-year stat line.</p>
+
+    <div class="intro-section">
+      <h3>How to play</h3>
+      <ul>
+        <li>A stat table loads with the player's name hidden. Type their name into the input — autocomplete suggests matches.</li>
+        <li>You get <strong>6 guesses</strong>. Use the <strong>Hint</strong> button if you're stuck (each hint costs 2 points). Wins score <code>max(10 − guesses − 2×hints, 1)</code>.</li>
+        <li>Three filters up top: <strong>Difficulty</strong> (Famous / Pros / All-time), <strong>Era</strong>, and <strong>Position</strong>. Pool size shown live.</li>
+      </ul>
+    </div>
+
+    <div class="intro-section intro-extreme">
+      <h3>🚨 Extreme Mode 🚨</h3>
+      <ul>
+        <li>Win <strong>5 in a row</strong> and the next round flips to Extreme — the whole UI turns red.</li>
+        <li>The player's name is revealed but the <strong>Team column</strong> is blanked. Type their teams <strong>in chronological order</strong> (e.g. <em>Red Sox</em>, then <em>Dodgers</em>).</li>
+        <li>3 strikes (wrong / out-of-order / unknown team) and you're out. Clear it for <strong>+25 points</strong> and a <strong>🚨 badge</strong> on the leaderboard.</li>
+        <li>Chain clears scale the difficulty: Level II/III/IV/V/VI add fewer strikes, harder players, hidden team count. Any loss resets the chain.</li>
+      </ul>
+    </div>
+
+    <div class="intro-section">
+      <h3>Share + leaderboard</h3>
+      <ul>
+        <li>After any round, <strong>📋 Copy share link</strong> sends a friend the exact player to try.</li>
+        <li>Wins post to a global leaderboard with your username and a 🚨×N badge for total Extremes cleared.</li>
+      </ul>
+    </div>
+
+    <h3>Pick a username</h3>
     <p class="sub">2–20 characters: letters, numbers, underscore, dot, or dash. Shown on the leaderboard.</p>
     <form id="username-form" autocomplete="off">
       <input id="username-input" type="text" maxlength="20" autocomplete="off" placeholder="e.g. jackson_w">
-      <button type="submit">Save</button>
+      <button type="submit">Start playing</button>
     </form>
     <p id="username-error" class="err"></p>
   </div>
