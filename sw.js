@@ -1,8 +1,9 @@
 // Service Worker — heavy pre-cache + stale-while-revalidate
 // Bump SHELL_VERSION on each release to evict the old shell cache.
-const SHELL_VERSION = "2026-06-13-003";
+const SHELL_VERSION = "2026-06-13-004";
+const DATA_VERSION  = "v2";          // bump to force a fresh bulk re-cache of /data/
 const SHELL_CACHE = `bg-shell-${SHELL_VERSION}`;
-const DATA_CACHE  = "bg-data-v1";   // persistent across shell versions
+const DATA_CACHE  = `bg-data-${DATA_VERSION}`;
 
 const SHELL_ASSETS = [
   "./",
@@ -80,7 +81,10 @@ self.addEventListener("activate", (event) => {
     const names = await caches.keys();
     await Promise.all(
       names
-        .filter((n) => n.startsWith("bg-shell-") && n !== SHELL_CACHE)
+        .filter((n) =>
+          (n.startsWith("bg-shell-") && n !== SHELL_CACHE) ||
+          (n.startsWith("bg-data-")  && n !== DATA_CACHE)
+        )
         .map((n) => caches.delete(n))
     );
     await self.clients.claim();
