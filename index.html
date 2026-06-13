@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ballplayer">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0b1d3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Who's the Ballplayer?</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -44,7 +50,27 @@
     <span id="round">Round —</span>
     <span id="score">Score: 0</span>
     <span id="guesses">Guesses: 0</span>
+    <span id="offline-pill" class="offline-pill" hidden>📡 Offline</span>
   </section>
+
+  <div id="install-progress" class="install-progress" hidden>
+    <div class="ip-bar"><div id="ip-fill" class="ip-fill"></div></div>
+    <div class="ip-row">
+      <span id="ip-label">Downloading for offline play…</span>
+      <button id="ip-dismiss" type="button" class="ip-dismiss" aria-label="Dismiss">×</button>
+    </div>
+  </div>
+
+  <div id="update-toast" class="toast" hidden>
+    <span>New version available.</span>
+    <button id="update-toast-btn" type="button">Refresh</button>
+    <button id="update-toast-dismiss" type="button" class="ip-dismiss" aria-label="Dismiss">×</button>
+  </div>
+
+  <div id="ios-install-banner" class="toast ios-install" hidden>
+    <span>📲 Add to Home Screen for full offline play — tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</span>
+    <button id="ios-install-dismiss" type="button" class="ip-dismiss" aria-label="Dismiss">×</button>
+  </div>
 
   <div id="challenge-banner" hidden></div>
 

@@ -243,15 +243,50 @@ function renderPoolCount(pool) {
 
 // ---------- Score posting ----------
 
+const POST_QUEUE_KEY = "bg.postQueue";
+
+function loadPostQueue() {
+  try { return JSON.parse(localStorage.getItem(POST_QUEUE_KEY) || "[]"); } catch { return []; }
+}
+function savePostQueue(q) {
+  localStorage.setItem(POST_QUEUE_KEY, JSON.stringify(q));
+}
+
+async function postScoreRequest(body) {
+  const res = await fetch("/api/leaderboard", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
 async function postScore(points, extreme = false) {
   if (!state.username || (points <= 0 && !extreme)) return;
+  const body = { username: state.username, points, extreme };
   try {
-    await fetch("/api/leaderboard", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: state.username, points, extreme }),
-    });
-  } catch (e) {}
+    await postScoreRequest(body);
+  } catch (e) {
+    // Offline or backend error — queue for later
+    const q = loadPostQueue();
+    q.push({ ...body, ts: Date.now() });
+    savePostQueue(q);
+  }
+}
+
+async function flushPostQueue() {
+  const q = loadPostQueue();
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      await postScoreRequest({ username: item.username, points: item.points, extreme: item.extreme });
+    } catch (e) {
+      remaining.push(item);
+    }
+  }
+  savePostQueue(remaining);
 }
 
 // ---------- Show result + celebrate ----------
@@ -826,7 +861,116 @@ async function loadLeaderboard() {
 
 // ---------- init ----------
 
+// ---------- Service Worker / PWA ----------
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    const data = e.data || {};
+    if (data.type === "install-progress") {
+      showInstallProgress(data.done, data.total);
+    } else if (data.type === "install-complete") {
+      flashInstallComplete(data.total);
+    }
+  });
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    reg.addEventListener("updatefound", () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener("statechange", () => {
+        if (nw.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateToast(nw);
+        }
+      });
+    });
+  }).catch(() => {});
+}
+
+function showInstallProgress(done, total) {
+  const wrap = $("install-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+  $("ip-fill").style.width = `${pct}%`;
+  $("ip-label").textContent = `Downloading for offline play — ${done}/${total} (${pct}%)`;
+}
+function flashInstallComplete(total) {
+  const wrap = $("install-progress");
+  if (!wrap) return;
+  $("ip-fill").style.width = "100%";
+  $("ip-label").textContent = `Ready for offline play (${total} players cached)`;
+  setTimeout(() => { wrap.hidden = true; }, 2500);
+}
+function hideInstallProgress() {
+  const el = $("install-progress");
+  if (el) el.hidden = true;
+}
+
+function showUpdateToast(worker) {
+  const t = $("update-toast");
+  if (!t) return;
+  t.hidden = false;
+  const btn = $("update-toast-btn");
+  btn.onclick = () => {
+    worker.postMessage({ type: "skip-waiting" });
+    setTimeout(() => location.reload(), 200);
+  };
+  $("update-toast-dismiss").onclick = () => { t.hidden = true; };
+}
+
+function maybeShowIosInstallBanner() {
+  const ua = navigator.userAgent;
+  const isIos = /iPhone|iPad|iPod/.test(ua) && !window.MSStream;
+  const standalone = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  if (!isIos || standalone) return;
+  if (localStorage.getItem("bg.iosBannerDismissed") === "1") return;
+  const el = $("ios-install-banner");
+  if (!el) return;
+  el.hidden = false;
+  $("ios-install-dismiss").onclick = () => {
+    el.hidden = true;
+    localStorage.setItem("bg.iosBannerDismissed", "1");
+  };
+}
+
+function setupOnlineOfflineUI() {
+  const pill = $("offline-pill");
+  const apply = () => {
+    if (!pill) return;
+    pill.hidden = navigator.onLine;
+    if (navigator.onLine) flushPostQueue();
+  };
+  window.addEventListener("online", apply);
+  window.addEventListener("offline", apply);
+  apply();
+}
+
+async function maybeNuke() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("nuke") !== "1") return false;
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.unregister();
+    }
+    if ("caches" in window) {
+      const names = await caches.keys();
+      for (const n of names) await caches.delete(n);
+    }
+    localStorage.clear();
+  } catch {}
+  // Strip ?nuke=1 and reload
+  const url = new URL(location.href);
+  url.searchParams.delete("nuke");
+  location.replace(url.toString());
+  return true;
+}
+
 async function init() {
+  if (await maybeNuke()) return;
+  registerServiceWorker();
+  setupOnlineOfflineUI();
+  maybeShowIosInstallBanner();
   try {
     const res = await fetch("data/manifest.json");
     state.manifest = await res.json();
