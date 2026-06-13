@@ -14,6 +14,60 @@ const ERA_RANGES = {
   "2020s": [2020, 2029],
 };
 
+const STREAK_FOR_EXTREME = 5;
+const EXTREME_STRIKES = 3;
+const EXTREME_START_YEAR = 2010;
+
+const TEAM_ALIASES = {
+  ARI: ["diamondbacks","dbacks","d backs","d-backs","arizona diamondbacks","arizona","ari"],
+  ATL: ["braves","atlanta","atlanta braves","atl"],
+  BAL: ["orioles","baltimore","baltimore orioles","bal","os","birds"],
+  BOS: ["red sox","redsox","boston","boston red sox","bosox","bos","sox"],
+  CHC: ["cubs","chicago cubs","chc","cubbies","north siders"],
+  CHW: ["white sox","whitesox","chicago white sox","chisox","chw","cws","south siders"],
+  CIN: ["reds","cincinnati","cincinnati reds","cin"],
+  CLE: ["guardians","cleveland","cleveland guardians","cle","indians","cleveland indians"],
+  COL: ["rockies","colorado","colorado rockies","col"],
+  DET: ["tigers","detroit","detroit tigers","det"],
+  HOU: ["astros","houston","houston astros","hou","stros"],
+  KCR: ["royals","kansas city","kansas city royals","kc","kcr","kcity"],
+  LAA: ["angels","los angeles angels","la angels","anaheim","laa","halos","angeles angels"],
+  LAD: ["dodgers","los angeles dodgers","la dodgers","lad","blue crew"],
+  MIA: ["marlins","miami","miami marlins","mia","florida","florida marlins","fla","fish"],
+  MIL: ["brewers","milwaukee","milwaukee brewers","mil","brew crew"],
+  MIN: ["twins","minnesota","minnesota twins","min"],
+  NYM: ["mets","new york mets","ny mets","nym","amazins","metropolitans"],
+  NYY: ["yankees","new york yankees","ny yankees","nyy","bombers","pinstripes","bronx bombers"],
+  OAK: ["athletics","oakland","oakland athletics","oakland as","oakland a's","oak","as","a's","sacramento athletics"],
+  PHI: ["phillies","philadelphia","philadelphia phillies","phi","phils"],
+  PIT: ["pirates","pittsburgh","pittsburgh pirates","pit","bucs","buccos"],
+  SDP: ["padres","san diego","san diego padres","sdp","sd","pads","friars"],
+  SEA: ["mariners","seattle","seattle mariners","sea","ms"],
+  SFG: ["giants","san francisco","san francisco giants","sf","sfg","sf giants"],
+  STL: ["cardinals","st louis","st. louis","saint louis","st louis cardinals","stl","cards","redbirds"],
+  TBR: ["rays","tampa bay","tampa","tampa bay rays","tbr","tb","devil rays"],
+  TEX: ["rangers","texas","texas rangers","tex"],
+  TOR: ["blue jays","toronto","toronto blue jays","jays","tor","bluejays"],
+  WSN: ["nationals","washington","washington nationals","wsn","nats","wsh","gnats"],
+};
+const TEAM_INPUT_LOOKUP = (() => {
+  const m = {};
+  for (const [abbr, aliases] of Object.entries(TEAM_ALIASES)) {
+    for (const a of aliases) m[a] = abbr;
+    m[abbr.toLowerCase()] = abbr;
+  }
+  return m;
+})();
+const TEAM_DISPLAY = {};
+for (const [abbr, aliases] of Object.entries(TEAM_ALIASES)) {
+  TEAM_DISPLAY[abbr] = aliases[0].replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function matchTeam(input) {
+  const norm = input.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+  return TEAM_INPUT_LOOKUP[norm] || null;
+}
+
 const state = {
   manifest: null,
   tier: localStorage.getItem("bg.tier") || "famous",
@@ -31,7 +85,10 @@ const state = {
   finished: false,
   recent: [],
   ac: { items: [], active: -1, query: "" },
-  shared: null, // { slug, from } — set when URL has ?p=<slug>&from=<user>
+  shared: null,
+  winStreak: parseInt(localStorage.getItem("bg.winStreak") || "0", 10),
+  isExtreme: false,
+  extreme: null,
 };
 
 const SLUG_RE = /^[a-z][a-z0-9]{3,14}$/i;
@@ -71,9 +128,27 @@ function setFeedback(msg, cls = "") {
 
 function renderStatus() {
   $("username-pill").textContent = state.username ? `@${state.username}` : "@—";
-  $("round").textContent = `Round ${state.round}`;
+  let badge;
+  if (state.winStreak >= STREAK_FOR_EXTREME) badge = "🚨 EXTREME NEXT";
+  else if (state.winStreak > 0) badge = `🔥 ${state.winStreak}`;
+  else badge = `Round ${state.round}`;
+  $("round").textContent = badge;
   $("score").textContent = `Score: ${state.score}`;
   $("guesses").textContent = `Guesses: ${state.guesses}`;
+}
+
+function extractTeams(player) {
+  if (!player?.headers) return [];
+  const headers = player.headers.map(h => h.stat);
+  const ti = headers.indexOf("team_name_abbr");
+  if (ti < 0) return [];
+  const runs = [];
+  let last = null;
+  for (const row of player.rows) {
+    const t = row[ti];
+    if (t && t !== last) { runs.push(t); last = t; }
+  }
+  return runs;
 }
 
 function renderTable() {
@@ -83,10 +158,23 @@ function renderTable() {
   const visibleHeaders = p.headers
     .map((h, idx) => ({ ...h, idx }))
     .filter(h => !state.hidden.has(h.stat));
+  const teamIdx = visibleHeaders.findIndex(h => h.stat === "team_name_abbr");
+  const revealedSet = state.extreme?.revealedSet || null;
+
   const thead = `<tr>${visibleHeaders.map(h => `<th title="${h.stat}">${h.label}</th>`).join("")}</tr>`;
   const tbody = p.rows.map(row =>
-    `<tr>${visibleHeaders.map(h => `<td>${row[h.idx] ?? ""}</td>`).join("")}</tr>`
+    `<tr>${visibleHeaders.map((h, ci) => {
+      let val = row[h.idx] ?? "";
+      if (state.isExtreme && !state.revealed && ci === teamIdx) {
+        if (!revealedSet || !revealedSet.has(val)) {
+          return `<td class="team-hidden">???</td>`;
+        }
+        return `<td class="team-revealed">${val}</td>`;
+      }
+      return `<td>${val}</td>`;
+    }).join("")}</tr>`
   ).join("");
+
   const caption = `<caption>${p.kind === "pitching" ? "Standard Pitching" : "Standard Batting"}</caption>`;
   wrap.innerHTML = `<div class="scroll"><table class="stats">${caption}<thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
 }
@@ -107,6 +195,11 @@ function getFilteredPool() {
   });
 }
 
+function getExtremePool() {
+  const base = state.manifest?.[state.tier] || [];
+  return base.filter(e => (e.f || 9999) >= EXTREME_START_YEAR && (e.t || 0) >= 2);
+}
+
 function renderPoolCount(pool) {
   const el = $("pool-count");
   if (!el) return;
@@ -119,13 +212,13 @@ function renderPoolCount(pool) {
 
 // ---------- Score posting ----------
 
-async function postScore(points) {
-  if (!state.username || points <= 0) return;
+async function postScore(points, extreme = false) {
+  if (!state.username || (points <= 0 && !extreme)) return;
   try {
     await fetch("/api/leaderboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: state.username, points }),
+      body: JSON.stringify({ username: state.username, points, extreme }),
     });
   } catch (e) {}
 }
@@ -140,50 +233,77 @@ function showResult(won) {
   renderTable();
 
   $("guess-area").hidden = true;
+  $("extreme-area").hidden = true;
   const resultEl = $("result");
   resultEl.hidden = false;
   resultEl.classList.toggle("win", won);
+  resultEl.classList.toggle("extreme-win", won && state.isExtreme);
   $("share-feedback").textContent = "";
-  $("result-headline").textContent = won ? "Got it!" : "Out of guesses";
-  const points = won ? Math.max(10 - state.guesses - state.hintsUsed * 2, 1) : 0;
+
+  let points = 0;
+  if (state.isExtreme) {
+    $("result-headline").textContent = won ? "🚨 EXTREME COMPLETED 🚨" : "Extreme failed";
+    points = won ? 25 : 0;  // big payoff for clearing extreme
+    const teamList = state.extreme?.teams?.join(" → ") || "";
+    $("result-detail").textContent = won
+      ? `${state.player.name} — full team timeline: ${teamList}. +25 points + 🚨 badge.`
+      : `${state.player.name} — the answer was: ${teamList}.`;
+  } else {
+    $("result-headline").textContent = won ? "Got it!" : "Out of guesses";
+    points = won ? Math.max(10 - state.guesses - state.hintsUsed * 2, 1) : 0;
+    $("result-detail").textContent = won
+      ? `It was ${state.player.name}. +${points} point${points === 1 ? "" : "s"} (${state.guesses} guesses, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}).`
+      : `It was ${state.player.name}.`;
+  }
   state.score += points;
   localStorage.setItem("bg.score", String(state.score));
 
-  const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0}');
+  // Local stats
+  const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false}');
   localStats.rounds += 1;
   if (won) {
     localStats.wins += 1;
     localStats.total += points;
     if (points > localStats.best) localStats.best = points;
+    if (state.isExtreme) localStats.extreme = true;
   }
   localStorage.setItem("bg.stats", JSON.stringify(localStats));
+
+  // Streak handling
+  if (state.isExtreme) {
+    state.winStreak = 0;  // reset after any extreme outcome
+  } else if (won) {
+    state.winStreak += 1;
+  } else {
+    state.winStreak = 0;
+  }
+  localStorage.setItem("bg.winStreak", String(state.winStreak));
   renderStatus();
-  $("result-detail").textContent = won
-    ? `It was ${state.player.name}. +${points} point${points === 1 ? "" : "s"} (${state.guesses} guesses, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}).`
-    : `It was ${state.player.name}.`;
+
   $("br-link").href = state.player.br_url;
   if (won) {
-    celebrate(resultEl);
-    postScore(points);
+    celebrate(resultEl, state.isExtreme);
+    postScore(points, state.isExtreme);
   }
 }
 
-function celebrate(resultEl) {
+function celebrate(resultEl, isExtreme = false) {
   resultEl.classList.add("win-pulse");
   setTimeout(() => resultEl.classList.remove("win-pulse"), 1300);
   const flash = document.createElement("div");
-  flash.className = "flash-bg";
+  flash.className = isExtreme ? "flash-bg flash-red" : "flash-bg";
   document.body.appendChild(flash);
-  setTimeout(() => flash.remove(), 900);
-  const emojis = ["⚾", "⚾", "⚾", "💚", "🟢", "✨", "🎉"];
-  for (let i = 0; i < 28; i++) {
+  setTimeout(() => flash.remove(), 1200);
+  const emojis = isExtreme ? ["🚨","⚾","🔥","💥","⚡","🟥","🎯"] : ["⚾","⚾","⚾","💚","🟢","✨","🎉"];
+  const count = isExtreme ? 50 : 28;
+  for (let i = 0; i < count; i++) {
     const span = document.createElement("span");
     span.className = "confetti";
     span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
     span.style.left = `${Math.random() * 100}vw`;
     span.style.fontSize = `${18 + Math.random() * 16}px`;
     span.style.animationDuration = `${1.6 + Math.random() * 1.6}s`;
-    span.style.animationDelay = `${Math.random() * 0.25}s`;
+    span.style.animationDelay = `${Math.random() * 0.3}s`;
     document.body.appendChild(span);
     setTimeout(() => span.remove(), 3500);
   }
@@ -212,33 +332,63 @@ async function newRound() {
   state.revealed = false;
   state.player = null;
   state.hidden = new Set();
+  state.extreme = null;
   setFeedback("");
   $("hint-box").hidden = true;
   $("hint-box").innerHTML = "";
-  $("guess-area").hidden = false;
   $("result").hidden = true;
   $("guess-input").value = "";
   closeAutocomplete();
   $("table-wrap").innerHTML = '<div id="table-loading">Loading stat line…</div>';
-  renderStatus();
 
-  // Shared challenge gets priority for round 1; pool filters skipped.
-  let id;
-  if (state.shared) {
+  // Decide mode for this round
+  const isShared = !!state.shared;
+  const wantExtreme = !isShared && state.winStreak >= STREAK_FOR_EXTREME;
+  let id, fellBackFromExtreme = false;
+
+  if (isShared) {
+    state.isExtreme = false;
     id = state.shared.slug;
     showChallengeBanner(state.shared.from);
-    state.shared = null;            // single-shot
+    state.shared = null;
     clearSharedFromUrl();
+  } else if (wantExtreme) {
+    const pool = getExtremePool();
+    if (pool.length) {
+      state.isExtreme = true;
+      id = pickRandomId(pool);
+    } else {
+      // No extreme players in current tier — fall back to normal, don't burn the streak
+      fellBackFromExtreme = true;
+      state.isExtreme = false;
+      const fb = getFilteredPool();
+      renderPoolCount(fb);
+      if (!fb.length) {
+        setFeedback("No players match these filters. Try widening Era or Position.", "bad");
+        $("table-wrap").innerHTML = ""; return;
+      }
+      id = pickRandomId(fb);
+    }
   } else {
+    state.isExtreme = false;
     hideChallengeBanner();
     const pool = getFilteredPool();
     renderPoolCount(pool);
     if (!pool.length) {
       setFeedback("No players match these filters. Try widening Era or Position.", "bad");
-      $("table-wrap").innerHTML = "";
-      return;
+      $("table-wrap").innerHTML = ""; return;
     }
     id = pickRandomId(pool);
+  }
+
+  document.body.classList.toggle("extreme-mode", state.isExtreme);
+  $("guess-area").hidden = state.isExtreme;
+  $("extreme-area").hidden = !state.isExtreme;
+  if (state.isExtreme) hideChallengeBanner();
+
+  renderStatus();
+  if (fellBackFromExtreme) {
+    setFeedback("No 2010+ multi-team players in this tier — easing back to normal. Try Pros tier.", "bad");
   }
   if (!id) return;
 
@@ -251,9 +401,93 @@ async function newRound() {
     setFeedback(`Couldn't load that player (${id}).`, "bad");
     return newRound();
   }
+
+  if (state.isExtreme) {
+    const teams = extractTeams(state.player);
+    state.extreme = { teams, idx: 0, attempts: 0, revealedSet: new Set() };
+    initExtremeUI();
+  } else {
+    setFeedback("");
+  }
   renderTable();
-  setFeedback("");
-  $("guess-input").focus();
+  if (state.isExtreme) {
+    $("extreme-input").focus();
+  } else {
+    $("guess-input").focus();
+  }
+}
+
+function initExtremeUI() {
+  $("extreme-name").textContent = state.player.name;
+  $("extreme-feedback").textContent = "";
+  $("extreme-input").value = "";
+  renderExtremeProgress();
+  renderExtremeStrikes();
+}
+
+function renderExtremeProgress() {
+  const el = $("extreme-progress");
+  if (!state.extreme) { el.innerHTML = ""; return; }
+  const total = state.extreme.teams.length;
+  const idx = state.extreme.idx;
+  const pills = state.extreme.teams.map((t, i) => {
+    if (i < idx) return `<span class="team-pill done">${TEAM_DISPLAY[t] || t}</span>`;
+    if (i === idx) return `<span class="team-pill current">Team ${i + 1}</span>`;
+    return `<span class="team-pill upcoming">?</span>`;
+  }).join("");
+  el.innerHTML = `<div class="team-pills">${pills}</div><div class="extreme-prompt">Team ${idx + 1} of ${total}</div>`;
+}
+
+function renderExtremeStrikes() {
+  const el = $("extreme-strikes");
+  const left = EXTREME_STRIKES - (state.extreme?.attempts || 0);
+  el.textContent = `Strikes left: ${left}/${EXTREME_STRIKES}`;
+}
+
+function flashExtreme(msg, cls = "") {
+  const el = $("extreme-feedback");
+  el.textContent = msg;
+  el.className = cls;
+}
+
+function submitExtreme(e) {
+  e.preventDefault();
+  if (!state.isExtreme || !state.extreme || state.finished) return;
+  const raw = $("extreme-input").value.trim();
+  if (!raw) return;
+  const matched = matchTeam(raw);
+  $("extreme-input").value = "";
+
+  if (!matched) {
+    state.extreme.attempts += 1;
+    flashExtreme(`Not a team I recognize: "${raw}". Try nickname, city, or 3-letter code.`, "bad");
+  } else if (matched === state.extreme.teams[state.extreme.idx]) {
+    state.extreme.revealedSet.add(matched);
+    state.extreme.idx += 1;
+    flashExtreme(`✓ ${TEAM_DISPLAY[matched] || matched}`, "good");
+    renderTable();
+    renderExtremeProgress();
+    if (state.extreme.idx >= state.extreme.teams.length) {
+      setTimeout(() => showResult(true), 700);
+      return;
+    }
+  } else if (state.extreme.teams.includes(matched)) {
+    state.extreme.attempts += 1;
+    flashExtreme(`${TEAM_DISPLAY[matched] || matched} is in there — but not yet. Earlier team first.`, "bad");
+  } else {
+    state.extreme.attempts += 1;
+    flashExtreme(`They never played for ${TEAM_DISPLAY[matched] || matched}.`, "bad");
+  }
+  renderExtremeStrikes();
+  if (state.extreme.attempts >= EXTREME_STRIKES) {
+    setTimeout(() => showResult(false), 700);
+    return;
+  }
+  $("extreme-input").focus();
+}
+
+function extremeGiveUp() {
+  if (state.isExtreme && !state.finished) showResult(false);
 }
 
 function showChallengeBanner(from) {
@@ -263,7 +497,6 @@ function showChallengeBanner(from) {
   el.innerHTML = `<span>🔗 ${who} sent you this player — can you guess them?</span>`;
   el.hidden = false;
 }
-
 function hideChallengeBanner() {
   const el = $("challenge-banner");
   if (el) { el.hidden = true; el.innerHTML = ""; }
@@ -275,18 +508,18 @@ async function shareCurrentPlayer() {
   url.searchParams.set("p", state.player.slug);
   if (state.username) url.searchParams.set("from", state.username);
 
-  const verdict = state.lastWon ? "🟢" : "💀";
+  const verdict = state.lastWon ? (state.isExtreme ? "🚨" : "🟢") : "💀";
   const who = state.username ? `@${state.username}` : "Someone";
+  const mode = state.isExtreme ? "Extreme" : "Baseball Guess";
   const detail = state.lastWon
-    ? `${state.guesses} guess${state.guesses === 1 ? "" : "es"}, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}`
+    ? (state.isExtreme ? "cleared Extreme!" : `${state.guesses} guesses, ${state.hintsUsed} hints`)
     : "stumped";
-  const text = `Baseball Guess: ${who} ${verdict} ${detail}\nYour turn: ${url.toString()}`;
+  const text = `${mode}: ${who} ${verdict} ${detail}\nYour turn: ${url.toString()}`;
 
   try {
     await navigator.clipboard.writeText(text);
     flashShareFeedback("Copied! Paste it to a friend.");
   } catch (e) {
-    // Fallback for browsers without clipboard API
     const ta = document.createElement("textarea");
     ta.value = text; document.body.appendChild(ta); ta.select();
     try { document.execCommand("copy"); flashShareFeedback("Copied! Paste it to a friend."); }
@@ -303,7 +536,7 @@ function flashShareFeedback(msg, isErr = false) {
 }
 
 function revealHint() {
-  if (state.finished || !state.player) return;
+  if (state.isExtreme || state.finished || !state.player) return;
   const hints = state.player.hints || [];
   if (state.hintsUsed >= hints.length) { setFeedback("No more hints.", "bad"); return; }
   const box = $("hint-box");
@@ -326,8 +559,7 @@ function matchesLocal(guess, name) {
 
 async function submitGuess(e) {
   e.preventDefault();
-  if (state.finished || !state.player) return;
-  // If the autocomplete has a highlighted item, prefer that
+  if (state.isExtreme || state.finished || !state.player) return;
   if (state.ac.active >= 0 && state.ac.items[state.ac.active]) {
     $("guess-input").value = state.ac.items[state.ac.active].name;
   }
@@ -343,7 +575,7 @@ async function submitGuess(e) {
   else $("guess-input").focus();
 }
 
-function giveUp() { if (!state.finished) showResult(false); }
+function giveUp() { if (!state.isExtreme && !state.finished) showResult(false); }
 
 function onTierChange(e) {
   state.tier = e.target.value;
@@ -364,12 +596,13 @@ function onPosChange(e) {
 // ---------- Autocomplete ----------
 
 function updateAutocomplete() {
+  if (state.isExtreme) return;
   const raw = $("guess-input").value;
   const q = normalize(raw);
   state.ac.query = q;
   state.ac.active = -1;
 
-  if (!q || q.length < 1) { closeAutocomplete(); return; }
+  if (!q) { closeAutocomplete(); return; }
 
   const pool = getFilteredPool();
   const matches = [];
@@ -378,7 +611,7 @@ function updateAutocomplete() {
     const n = e._n;
     if (n.startsWith(q) || n.includes(" " + q)) {
       matches.push({ ...e, _starts: n.startsWith(q) ? 0 : 1 });
-      if (matches.length >= 30) break;  // cap initial scan for perf
+      if (matches.length >= 30) break;
     }
   }
   matches.sort((a, b) => a._starts - b._starts || a.name.length - b.name.length);
@@ -411,7 +644,6 @@ function selectSuggestion(idx) {
   if (!e) return;
   $("guess-input").value = e.name;
   closeAutocomplete();
-  // Auto-submit on tap-select
   $("guess-form").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
 }
 
@@ -465,11 +697,12 @@ function showLeaderboardModal() {
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 
 function renderLocalStatsCard() {
-  const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0}');
+  const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false}');
   const winRate = s.rounds ? Math.round((s.wins / s.rounds) * 100) : 0;
+  const badge = s.extreme ? " 🚨" : "";
   return `
     <div class="stats-card">
-      <div class="stat"><span class="label">Your score</span><span class="value">${s.total}</span></div>
+      <div class="stat"><span class="label">Your score${badge}</span><span class="value">${s.total}</span></div>
       <div class="stat"><span class="label">Wins</span><span class="value">${s.wins}/${s.rounds}</span></div>
       <div class="stat"><span class="label">Win %</span><span class="value">${winRate}%</span></div>
     </div>`;
@@ -492,7 +725,8 @@ async function loadLeaderboard() {
           <tbody>
             ${scores.map((s, i) => {
               const me = state.username && s.username === state.username ? " class='me'" : "";
-              return `<tr${me}><td>${i + 1}</td><td>@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
+              const badge = s.extreme ? "🚨 " : "";
+              return `<tr${me}><td>${i + 1}</td><td>${badge}@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
             }).join("")}
           </tbody>
         </table>`
@@ -539,9 +773,9 @@ async function init() {
   $("username-pill").addEventListener("click", showUsernameModal);
   $("share-btn").addEventListener("click", shareCurrentPlayer);
 
-  state.shared = getSharedFromUrl();
+  $("extreme-form").addEventListener("submit", submitExtreme);
+  $("extreme-giveup").addEventListener("click", extremeGiveUp);
 
-  // Autocomplete
   $("guess-input").addEventListener("input", updateAutocomplete);
   $("guess-input").addEventListener("keydown", onGuessKeydown);
   $("guess-input").addEventListener("blur", () => setTimeout(closeAutocomplete, 150));
@@ -550,6 +784,7 @@ async function init() {
     if (li) { e.preventDefault(); selectSuggestion(parseInt(li.dataset.idx, 10)); }
   });
 
+  state.shared = getSharedFromUrl();
   renderStatus();
   if (!state.username) showUsernameModal();
   newRound();

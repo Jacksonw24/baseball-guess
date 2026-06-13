@@ -70,6 +70,25 @@
     <div id="hint-box" hidden></div>
   </section>
 
+  <section id="extreme-area" hidden>
+    <div class="extreme-header">
+      <span class="extreme-tag">🚨 EXTREME MODE 🚨</span>
+      <h2 id="extreme-name"></h2>
+      <p class="sub">Name the teams they've played for, in order.</p>
+    </div>
+    <div id="extreme-progress" class="extreme-progress"></div>
+    <form id="extreme-form" autocomplete="off">
+      <input id="extreme-input" type="text" placeholder='e.g. "Red Sox" or "BOS"'
+             autocomplete="off" autocapitalize="words" spellcheck="false">
+      <button type="submit" id="extreme-btn">Submit</button>
+    </form>
+    <div class="row">
+      <button id="extreme-giveup" type="button">Give up</button>
+    </div>
+    <p id="extreme-feedback"></p>
+    <p id="extreme-strikes" class="sub"></p>
+  </section>
+
   <section id="result" hidden>
     <h2 id="result-headline"></h2>
     <p id="result-detail"></p>
