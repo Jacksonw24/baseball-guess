@@ -15,8 +15,30 @@ const ERA_RANGES = {
 };
 
 const STREAK_FOR_EXTREME = 5;
-const EXTREME_STRIKES = 3;
 const EXTREME_START_YEAR = 2010;
+
+// Each successive Extreme clear escalates difficulty. Index = extremeWins so far.
+const EXTREME_LEVELS = [
+  { strikes: 3, poolTier: "famous",  showCount: true,  label: "I"   },
+  { strikes: 3, poolTier: "pros",    showCount: true,  label: "II"  },
+  { strikes: 2, poolTier: "pros",    showCount: true,  label: "III" },
+  { strikes: 2, poolTier: "pros",    showCount: false, label: "IV"  },
+  { strikes: 2, poolTier: "alltime", showCount: false, label: "V"   },
+  { strikes: 1, poolTier: "alltime", showCount: false, label: "VI+" },
+];
+const TIER_RANK = { famous: 0, pros: 1, alltime: 2 };
+const TIERS_BY_RANK = ["famous", "pros", "alltime"];
+
+function getExtremeConfig() {
+  return EXTREME_LEVELS[Math.min(state.extremeWins, EXTREME_LEVELS.length - 1)];
+}
+
+function getExtremePoolTier() {
+  const cfg = getExtremeConfig();
+  const userRank = TIER_RANK[state.tier] ?? 0;
+  const cfgRank  = TIER_RANK[cfg.poolTier] ?? 0;
+  return TIERS_BY_RANK[Math.max(userRank, cfgRank)];
+}
 
 const TEAM_ALIASES = {
   ARI: ["diamondbacks","dbacks","d backs","d-backs","arizona diamondbacks","arizona","ari"],
@@ -87,8 +109,11 @@ const state = {
   ac: { items: [], active: -1, query: "" },
   shared: null,
   winStreak: parseInt(localStorage.getItem("bg.winStreak") || "0", 10),
+  extremeWins: parseInt(localStorage.getItem("bg.extremeWins") || "0", 10),
+  maxExtremeLevel: parseInt(localStorage.getItem("bg.maxExtremeLevel") || "0", 10),
   isExtreme: false,
   extreme: null,
+  extremeConfig: null,
 };
 
 const SLUG_RE = /^[a-z][a-z0-9]{3,14}$/i;
@@ -129,9 +154,14 @@ function setFeedback(msg, cls = "") {
 function renderStatus() {
   $("username-pill").textContent = state.username ? `@${state.username}` : "@—";
   let badge;
-  if (state.winStreak >= STREAK_FOR_EXTREME) badge = "🚨 EXTREME NEXT";
-  else if (state.winStreak > 0) badge = `🔥 ${state.winStreak}`;
-  else badge = `Round ${state.round}`;
+  if (state.winStreak >= STREAK_FOR_EXTREME) {
+    const nextLevel = EXTREME_LEVELS[Math.min(state.extremeWins, EXTREME_LEVELS.length - 1)].label;
+    badge = `🚨 EXTREME ${nextLevel} NEXT`;
+  } else if (state.winStreak > 0) {
+    badge = `🔥 ${state.winStreak}`;
+  } else {
+    badge = `Round ${state.round}`;
+  }
   $("round").textContent = badge;
   $("score").textContent = `Score: ${state.score}`;
   $("guesses").textContent = `Guesses: ${state.guesses}`;
@@ -196,7 +226,8 @@ function getFilteredPool() {
 }
 
 function getExtremePool() {
-  const base = state.manifest?.[state.tier] || [];
+  const tier = getExtremePoolTier();
+  const base = state.manifest?.[tier] || [];
   return base.filter(e => (e.f || 9999) >= EXTREME_START_YEAR && (e.t || 0) >= 2);
 }
 
@@ -242,11 +273,14 @@ function showResult(won) {
 
   let points = 0;
   if (state.isExtreme) {
-    $("result-headline").textContent = won ? "🚨 EXTREME COMPLETED 🚨" : "Extreme failed";
-    points = won ? 25 : 0;  // big payoff for clearing extreme
+    const cfg = state.extremeConfig || { label: "I" };
+    $("result-headline").textContent = won ? `🚨 EXTREME ${cfg.label} CLEARED 🚨` : `Extreme ${cfg.label} failed`;
+    // Bigger payouts at higher levels: 25 / 35 / 50 / 70 / 100 / 150
+    const SCALE = [25, 35, 50, 70, 100, 150];
+    points = won ? SCALE[Math.min(state.extremeWins, SCALE.length - 1)] : 0;
     const teamList = state.extreme?.teams?.join(" → ") || "";
     $("result-detail").textContent = won
-      ? `${state.player.name} — full team timeline: ${teamList}. +25 points + 🚨 badge.`
+      ? `${state.player.name} — ${teamList}. +${points} points + 🚨 badge. Chain: ${state.extremeWins + 1}.`
       : `${state.player.name} — the answer was: ${teamList}.`;
   } else {
     $("result-headline").textContent = won ? "Got it!" : "Out of guesses";
@@ -271,13 +305,24 @@ function showResult(won) {
 
   // Streak handling
   if (state.isExtreme) {
-    state.winStreak = 0;  // reset after any extreme outcome
+    if (won) {
+      state.extremeWins += 1;
+      if (state.extremeWins > state.maxExtremeLevel) {
+        state.maxExtremeLevel = state.extremeWins;
+        localStorage.setItem("bg.maxExtremeLevel", String(state.maxExtremeLevel));
+      }
+    } else {
+      state.extremeWins = 0;
+    }
+    state.winStreak = 0;
   } else if (won) {
     state.winStreak += 1;
   } else {
     state.winStreak = 0;
+    state.extremeWins = 0;  // any loss kills the extreme chain
   }
   localStorage.setItem("bg.winStreak", String(state.winStreak));
+  localStorage.setItem("bg.extremeWins", String(state.extremeWins));
   renderStatus();
 
   $("br-link").href = state.player.br_url;
@@ -353,6 +398,7 @@ async function newRound() {
     state.shared = null;
     clearSharedFromUrl();
   } else if (wantExtreme) {
+    state.extremeConfig = getExtremeConfig();
     const pool = getExtremePool();
     if (pool.length) {
       state.isExtreme = true;
@@ -407,6 +453,7 @@ async function newRound() {
     state.extreme = { teams, idx: 0, attempts: 0, revealedSet: new Set() };
     initExtremeUI();
   } else {
+    state.extremeConfig = null;
     setFeedback("");
   }
   renderTable();
@@ -421,6 +468,11 @@ function initExtremeUI() {
   $("extreme-name").textContent = state.player.name;
   $("extreme-feedback").textContent = "";
   $("extreme-input").value = "";
+  const tag = document.querySelector(".extreme-tag");
+  if (tag) {
+    const cfg = state.extremeConfig || { label: "I" };
+    tag.textContent = `🚨 EXTREME ${cfg.label} 🚨`;
+  }
   renderExtremeProgress();
   renderExtremeStrikes();
 }
@@ -428,20 +480,30 @@ function initExtremeUI() {
 function renderExtremeProgress() {
   const el = $("extreme-progress");
   if (!state.extreme) { el.innerHTML = ""; return; }
+  const cfg = state.extremeConfig || { showCount: true };
   const total = state.extreme.teams.length;
   const idx = state.extreme.idx;
-  const pills = state.extreme.teams.map((t, i) => {
-    if (i < idx) return `<span class="team-pill done">${TEAM_DISPLAY[t] || t}</span>`;
-    if (i === idx) return `<span class="team-pill current">Team ${i + 1}</span>`;
-    return `<span class="team-pill upcoming">?</span>`;
-  }).join("");
-  el.innerHTML = `<div class="team-pills">${pills}</div><div class="extreme-prompt">Team ${idx + 1} of ${total}</div>`;
+  const pillsArr = [];
+  for (let i = 0; i < total; i++) {
+    if (i < idx) {
+      pillsArr.push(`<span class="team-pill done">${TEAM_DISPLAY[state.extreme.teams[i]] || state.extreme.teams[i]}</span>`);
+    } else if (i === idx) {
+      pillsArr.push(`<span class="team-pill current">Team ${i + 1}</span>`);
+    } else if (cfg.showCount) {
+      pillsArr.push(`<span class="team-pill upcoming">?</span>`);
+    }
+  }
+  const prompt = cfg.showCount
+    ? `Team ${idx + 1} of ${total}`
+    : `Team ${idx + 1} — total hidden`;
+  el.innerHTML = `<div class="team-pills">${pillsArr.join("")}</div><div class="extreme-prompt">${prompt}</div>`;
 }
 
 function renderExtremeStrikes() {
   const el = $("extreme-strikes");
-  const left = EXTREME_STRIKES - (state.extreme?.attempts || 0);
-  el.textContent = `Strikes left: ${left}/${EXTREME_STRIKES}`;
+  const max = state.extremeConfig?.strikes ?? 3;
+  const left = max - (state.extreme?.attempts || 0);
+  el.textContent = `Strikes left: ${left}/${max}`;
 }
 
 function flashExtreme(msg, cls = "") {
@@ -479,7 +541,8 @@ function submitExtreme(e) {
     flashExtreme(`They never played for ${TEAM_DISPLAY[matched] || matched}.`, "bad");
   }
   renderExtremeStrikes();
-  if (state.extreme.attempts >= EXTREME_STRIKES) {
+  const maxStrikes = state.extremeConfig?.strikes ?? 3;
+  if (state.extreme.attempts >= maxStrikes) {
     setTimeout(() => showResult(false), 700);
     return;
   }
@@ -699,10 +762,13 @@ function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 function renderLocalStatsCard() {
   const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false}');
   const winRate = s.rounds ? Math.round((s.wins / s.rounds) * 100) : 0;
-  const badge = s.extreme ? " 🚨" : "";
+  const maxLvl = state.maxExtremeLevel || 0;
+  const extremeBadge = maxLvl > 0
+    ? ` 🚨 lv ${EXTREME_LEVELS[Math.min(maxLvl - 1, EXTREME_LEVELS.length - 1)].label}`
+    : "";
   return `
     <div class="stats-card">
-      <div class="stat"><span class="label">Your score${badge}</span><span class="value">${s.total}</span></div>
+      <div class="stat"><span class="label">Your score${extremeBadge}</span><span class="value">${s.total}</span></div>
       <div class="stat"><span class="label">Wins</span><span class="value">${s.wins}/${s.rounds}</span></div>
       <div class="stat"><span class="label">Win %</span><span class="value">${winRate}%</span></div>
     </div>`;
