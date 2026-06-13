@@ -383,6 +383,33 @@ def build_pitching_row(bb_slug: str, mlb_id: str, split: dict, birth_year: int |
 
 HAND = {"L": "Left", "R": "Right", "B": "Both", "S": "Switch"}
 
+COUNTRY_NORMALIZE = {
+    "USA":"USA","D.R.":"the Dominican Republic","DR":"the Dominican Republic","DO":"the Dominican Republic",
+    "P.R.":"Puerto Rico","PR":"Puerto Rico","CAN":"Canada","V.I.":"the U.S. Virgin Islands",
+    "Curacao":"Curaçao","Curaçao":"Curaçao",
+}
+
+def fmt_hometown(country, state, city):
+    country = (country or "").strip()
+    state = (state or "").strip()
+    city = (city or "").strip()
+    if not country: return None
+    if country == "USA":
+        if city and state: return f"Hometown: {city}, {state}"
+        if state:         return f"Hometown: {state}"
+        return "Hometown: USA"
+    return f"Born in {COUNTRY_NORMALIZE.get(country, country)}"
+
+def fmt_height_weight(inches_str, weight_str):
+    parts = []
+    try:
+        h = int(inches_str); parts.append(f"{h // 12}'{h % 12}\"")
+    except (ValueError, TypeError): pass
+    try:
+        w = int(float(weight_str)); parts.append(f"{w} lb")
+    except (ValueError, TypeError): pass
+    return ("Build: " + ", ".join(parts)) if parts else None
+
 
 def build_accolades_line(bb_slug: str, mlb_id: str | None) -> str:
     """Derive accolades fresh: Lahman (≤2021) + MLB API (2022+) + HoF + AS count."""
@@ -455,13 +482,63 @@ def recompute_hints(player: dict, awards_extra: list[str], bb_slug: str, mlb_id:
     last = tokens[-1] if tokens else name
     initial = next((c for c in last if c.isalpha()), "?").upper()
 
-    return [
+    # Hometown / build — pull from Lahman People.csv first, fall back to whatever
+    # was already in the existing hint list, then MLB API would only run on rebuild.
+    hometown = (player.get("hometown_hint") or _extract_line(player.get("hints", []),
+                ("Hometown:", "Born in ")) or
+                fmt_hometown(*lahman_person_for(bb_slug)))
+    build = (player.get("build_hint") or _extract_line(player.get("hints", []), ("Build:",)) or
+             fmt_height_weight(*lahman_height_weight_for(bb_slug)))
+
+    out = [
         f"Position: {pos_label}" + (f" — {', '.join(bt)}" if bt else ""),
         f"Best single-season WAR: {best_war:.1f}" if best_war else "Best single-season WAR: n/a",
         f"Career: {career_line}",
         accolades_line,
-        f"Last name starts with: {initial}",
     ]
+    if hometown: out.append(hometown)
+    if build:    out.append(build)
+    out.append(f"Last name starts with: {initial}")
+    return out
+
+
+_LAHMAN_PERSON_CACHE = {}
+def lahman_person_for(bb_slug):
+    if bb_slug in _LAHMAN_PERSON_CACHE: return _LAHMAN_PERSON_CACHE[bb_slug]
+    # birth_year_by_bbref was already loaded; we need broader People.csv data
+    if not (RAW / "People.csv").exists():
+        _LAHMAN_PERSON_CACHE[bb_slug] = (None, None, None)
+        return _LAHMAN_PERSON_CACHE[bb_slug]
+    # Build cache on first call
+    if not _LAHMAN_PERSON_CACHE:
+        with open(RAW / "People.csv", newline="") as fh:
+            for r in csv.DictReader(fh):
+                slug = r.get("bbrefID") or r.get("playerID")
+                if slug:
+                    _LAHMAN_PERSON_CACHE[slug] = (
+                        r.get("birthCountry"), r.get("birthState"), r.get("birthCity"),
+                    )
+    return _LAHMAN_PERSON_CACHE.get(bb_slug, (None, None, None))
+
+_LAHMAN_HW_CACHE = {}
+def lahman_height_weight_for(bb_slug):
+    if bb_slug in _LAHMAN_HW_CACHE: return _LAHMAN_HW_CACHE[bb_slug]
+    if not (RAW / "People.csv").exists():
+        _LAHMAN_HW_CACHE[bb_slug] = (None, None); return _LAHMAN_HW_CACHE[bb_slug]
+    if not _LAHMAN_HW_CACHE:
+        with open(RAW / "People.csv", newline="") as fh:
+            for r in csv.DictReader(fh):
+                slug = r.get("bbrefID") or r.get("playerID")
+                if slug:
+                    _LAHMAN_HW_CACHE[slug] = (r.get("height"), r.get("weight"))
+    return _LAHMAN_HW_CACHE.get(bb_slug, (None, None))
+
+
+def _extract_line(hints, prefixes):
+    for h in hints or []:
+        if any(h.startswith(p) for p in prefixes):
+            return h
+    return None
 
 
 def _extract_position_label_from_hints(hints: list[str]) -> str:

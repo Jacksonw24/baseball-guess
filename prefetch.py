@@ -53,6 +53,37 @@ def norm_team(t):
     return TEAM_NORMALIZE.get(t, t) if t else t
 
 
+COUNTRY_NORMALIZE_PREFETCH = {
+    "USA":"USA","D.R.":"the Dominican Republic","DR":"the Dominican Republic","DO":"the Dominican Republic",
+    "P.R.":"Puerto Rico","PR":"Puerto Rico","CAN":"Canada","V.I.":"the U.S. Virgin Islands",
+    "Curacao":"Curaçao","Curaçao":"Curaçao",
+}
+
+def fmt_hometown(country, state, city):
+    country = (country or "").strip()
+    state = (state or "").strip()
+    city = (city or "").strip()
+    if not country: return None
+    if country == "USA":
+        if city and state: return f"Hometown: {city}, {state}"
+        if state:         return f"Hometown: {state}"
+        return "Hometown: USA"
+    return f"Born in {COUNTRY_NORMALIZE_PREFETCH.get(country, country)}"
+
+def fmt_height_weight(inches_str, weight_str):
+    parts = []
+    try:
+        h = int(inches_str)
+        parts.append(f"{h // 12}'{h % 12}\"")
+    except (ValueError, TypeError): pass
+    try:
+        w = int(float(weight_str))
+        parts.append(f"{w} lb")
+    except (ValueError, TypeError): pass
+    if not parts: return None
+    return "Build: " + ", ".join(parts)
+
+
 def safe_div(num, den):
     return num / den if den else 0.0
 
@@ -67,6 +98,7 @@ with open(RAW / "People.csv", newline="") as fh:
             "name": f'{r["nameFirst"]} {r["nameLast"]}'.strip(),
             "bbref": r["bbrefID"] or r["playerID"],
             "bats": r["bats"], "throws": r["throws"],
+            "born_state": r.get("birthState",""), "born_city": r.get("birthCity",""),
             "debut": r["debut"][:4] if r["debut"] else "",
             "final": r["finalGame"][:4] if r["finalGame"] else "",
             "born_country": r["birthCountry"],
@@ -393,6 +425,11 @@ def build_player(pid: str, person: dict) -> dict | None:
         f"Career: {career_line}" if career_line else "Career totals unavailable",
         "Accolades: " + (", ".join(awards) if awards else "no major awards"),
     ]
+    # Hometown + Build (height/weight)
+    home = fmt_hometown(person.get("born_country"), person.get("born_state"), person.get("born_city"))
+    if home: hints.append(home)
+    build = fmt_height_weight(person.get("height"), person.get("weight"))
+    if build: hints.append(build)
     # Last-name initial
     last = person["name"].split()[-1] if person["name"] else ""
     initial = next((c for c in last if c.isalpha()), "?").upper()
