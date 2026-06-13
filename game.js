@@ -107,7 +107,10 @@ const state = {
   score: parseInt(localStorage.getItem("bg.score") || "0", 10),
   round: 0,
   finished: false,
-  recent: [],
+  recentByTier: (() => {
+    try { return JSON.parse(localStorage.getItem("bg.recentByTier") || "{}"); }
+    catch { return {}; }
+  })(),
   ac: { items: [], active: -1, query: "" },
   shared: null,
   winStreak: parseInt(localStorage.getItem("bg.winStreak") || "0", 10),
@@ -420,16 +423,30 @@ function celebrate(resultEl, isExtreme = false) {
 
 // ---------- Round lifecycle ----------
 
-function pickRandomId(pool) {
+function recentListFor(tierKey) {
+  if (!state.recentByTier[tierKey]) state.recentByTier[tierKey] = [];
+  return state.recentByTier[tierKey];
+}
+
+function saveRecent() {
+  try { localStorage.setItem("bg.recentByTier", JSON.stringify(state.recentByTier)); }
+  catch {}
+}
+
+function pickRandomId(pool, tierKey) {
   if (!pool.length) return null;
-  const exclude = new Set(state.recent.slice(-30));
+  // Cap = max(20, 25% of pool), no more than 100 — gives natural decay
+  const cap = Math.max(20, Math.min(100, Math.floor(pool.length * 0.25)));
+  const recent = recentListFor(tierKey || state.tier);
+  const exclude = new Set(recent.slice(-cap));
   let pick;
-  for (let tries = 0; tries < 20; tries++) {
+  for (let tries = 0; tries < 30; tries++) {
     pick = pool[Math.floor(Math.random() * pool.length)];
     if (!exclude.has(pick.id)) break;
   }
-  state.recent.push(pick.id);
-  if (state.recent.length > 60) state.recent.shift();
+  recent.push(pick.id);
+  while (recent.length > cap * 2) recent.shift();
+  saveRecent();
   return pick.id;
 }
 
@@ -466,7 +483,7 @@ async function newRound() {
     const pool = getExtremePool();
     if (pool.length) {
       state.isExtreme = true;
-      id = pickRandomId(pool);
+      id = pickRandomId(pool, `ex-${getExtremePoolTier()}`);
     } else {
       // No extreme players in current tier — fall back to normal, don't burn the streak
       fellBackFromExtreme = true;
@@ -477,7 +494,7 @@ async function newRound() {
         setFeedback("No players match these filters. Try widening Era or Position.", "bad");
         $("table-wrap").innerHTML = ""; return;
       }
-      id = pickRandomId(fb);
+      id = pickRandomId(fb, state.tier);
     }
   } else {
     state.isExtreme = false;
@@ -488,7 +505,7 @@ async function newRound() {
       setFeedback("No players match these filters. Try widening Era or Position.", "bad");
       $("table-wrap").innerHTML = ""; return;
     }
-    id = pickRandomId(pool);
+    id = pickRandomId(pool, `${state.tier}|${state.era}|${state.pos}`);
   }
 
   document.body.classList.toggle("extreme-mode", state.isExtreme);
