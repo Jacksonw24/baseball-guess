@@ -634,6 +634,7 @@ async function shareCurrentPlayer() {
   const url = new URL(location.origin + location.pathname);
   url.searchParams.set("p", state.player.slug);
   if (state.username) url.searchParams.set("from", state.username);
+  const urlStr = url.toString();
 
   const verdict = state.lastWon ? (state.isExtreme ? "🚨" : "🟢") : "💀";
   const who = state.username ? `@${state.username}` : "Someone";
@@ -641,18 +642,34 @@ async function shareCurrentPlayer() {
   const detail = state.lastWon
     ? (state.isExtreme ? "cleared Extreme!" : `${state.guesses} guesses, ${state.hintsUsed} hints`)
     : "stumped";
-  const text = `${mode}: ${who} ${verdict} ${detail}\nYour turn: ${url.toString()}`;
+  const text = `${mode}: ${who} ${verdict} ${detail}`;
+  const fullText = `${text}\nYour turn: ${urlStr}`;
 
-  try {
-    await navigator.clipboard.writeText(text);
-    flashShareFeedback("Copied! Paste it to a friend.");
-  } catch (e) {
-    const ta = document.createElement("textarea");
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand("copy"); flashShareFeedback("Copied! Paste it to a friend."); }
-    catch { flashShareFeedback("Copy failed — long-press to copy this link manually.", true); }
-    ta.remove();
+  // 1) Native share sheet (iOS, Android, Chrome desktop on touch devices)
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Who's the Ballplayer?", text, url: urlStr });
+      flashShareFeedback("Sent!");
+      return;
+    } catch (e) {
+      if (e?.name === "AbortError") return;  // user cancelled the sheet — no-op
+      // fall through to clipboard
+    }
   }
+
+  // 2) Modern clipboard API
+  try {
+    await navigator.clipboard.writeText(fullText);
+    flashShareFeedback("Copied! Paste it to a friend.");
+    return;
+  } catch (e) {}
+
+  // 3) Legacy clipboard fallback
+  const ta = document.createElement("textarea");
+  ta.value = fullText; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); flashShareFeedback("Copied! Paste it to a friend."); }
+  catch { flashShareFeedback("Couldn't share — long-press the link to copy it manually.", true); }
+  ta.remove();
 }
 
 function flashShareFeedback(msg, isErr = false) {
