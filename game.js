@@ -181,6 +181,24 @@ function extractTeams(player) {
   return runs;
 }
 
+const MARKER_TITLES = {
+  "⭐":  "All-Star",
+  "MVP": "Most Valuable Player",
+  "CY":  "Cy Young",
+  "ROY": "Rookie of the Year",
+  "TC":  "Triple Crown",
+  "WSM": "World Series MVP",
+};
+
+function renderMarkers(markers) {
+  if (!markers?.length) return "";
+  return markers.map(m => {
+    const title = MARKER_TITLES[m] || m;
+    const cls = m === "⭐" ? "marker-as" : "marker-award";
+    return ` <span class="${cls}" title="${title}">${m}</span>`;
+  }).join("");
+}
+
 function renderTable() {
   const wrap = $("table-wrap");
   if (!state.player) { wrap.innerHTML = ""; return; }
@@ -189,7 +207,9 @@ function renderTable() {
     .map((h, idx) => ({ ...h, idx }))
     .filter(h => !state.hidden.has(h.stat));
   const teamIdx = visibleHeaders.findIndex(h => h.stat === "team_name_abbr");
+  const yearIdx = visibleHeaders.findIndex(h => h.stat === "year_id");
   const revealedSet = state.extreme?.revealedSet || null;
+  const markers = p.markers || {};
 
   const thead = `<tr>${visibleHeaders.map(h => `<th title="${h.stat}">${h.label}</th>`).join("")}</tr>`;
   const tbody = p.rows.map(row =>
@@ -200,6 +220,10 @@ function renderTable() {
           return `<td class="team-hidden">???</td>`;
         }
         return `<td class="team-revealed">${val}</td>`;
+      }
+      if (ci === yearIdx) {
+        const ms = renderMarkers(markers[val]);
+        return `<td class="year-cell">${val}${ms}</td>`;
       }
       return `<td>${val}</td>`;
     }).join("")}</tr>`

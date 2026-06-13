@@ -630,6 +630,25 @@ body.extreme-mode .hint { border-left-color: #ef4444; }
 #extreme-feedback.bad  { color: var(--bad);  }
 #extreme-strikes { margin: 0; font-size: 13px; color: var(--muted); }
 
+.year-cell { white-space: nowrap; }
+.marker-as {
+  color: var(--accent);
+  font-size: 11px;
+  vertical-align: 1px;
+}
+.marker-award {
+  display: inline-block;
+  margin-left: 2px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--accent);
+  color: #1a1a1a;
+  vertical-align: 1px;
+}
+
 td.team-hidden    { color: rgba(255,255,255,0.25); letter-spacing: 1px; }
 td.team-revealed  { color: var(--good); font-weight: 600; animation: revealPulse 0.5s ease; }
 @keyframes revealPulse {
