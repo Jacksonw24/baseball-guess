@@ -410,6 +410,23 @@ button:active { transform: scale(0.97); }
 #result p  { margin: 0; color: var(--muted); }
 #result a  { color: var(--accent); text-decoration: none; font-size: 14px; }
 #result button { align-self: center; padding: 12px 28px; }
+.result-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+#share-feedback {
+  margin: 0; font-size: 13px; color: var(--good); min-height: 18px;
+}
+#share-feedback.err { color: var(--bad); }
+
+#challenge-banner {
+  background: linear-gradient(90deg, rgba(74,222,128,0.15), rgba(255,204,77,0.10));
+  border: 1px solid rgba(74,222,128,0.4);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+}
 
 footer {
   margin-top: auto;

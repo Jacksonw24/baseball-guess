@@ -46,6 +46,8 @@
     <span id="guesses">Guesses: 0</span>
   </section>
 
+  <div id="challenge-banner" hidden></div>
+
   <section id="table-wrap" aria-live="polite">
     <div id="table-loading">Loading stat line…</div>
   </section>
@@ -72,7 +74,11 @@
     <h2 id="result-headline"></h2>
     <p id="result-detail"></p>
     <a id="br-link" href="#" target="_blank" rel="noopener">View on Baseball Reference →</a>
-    <button id="next-btn" type="button">Next player</button>
+    <div class="result-actions">
+      <button id="share-btn" type="button" class="ghost">📋 Copy share link</button>
+      <button id="next-btn" type="button">Next player</button>
+    </div>
+    <p id="share-feedback" class="sub"></p>
   </section>
 
   <footer>

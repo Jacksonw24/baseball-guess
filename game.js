@@ -21,6 +21,7 @@ const state = {
   pos:  localStorage.getItem("bg.pos")  || "all",
   username: localStorage.getItem("bg.username") || "",
   player: null,
+  lastWon: false,
   hidden: new Set(),
   revealed: false,
   hintsUsed: 0,
@@ -30,7 +31,26 @@ const state = {
   finished: false,
   recent: [],
   ac: { items: [], active: -1, query: "" },
+  shared: null, // { slug, from } — set when URL has ?p=<slug>&from=<user>
 };
+
+const SLUG_RE = /^[a-z][a-z0-9]{3,14}$/i;
+
+function getSharedFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const p = params.get("p");
+  if (!p || !SLUG_RE.test(p)) return null;
+  const from = (params.get("from") || "").trim();
+  return { slug: p, from: USERNAME_RE.test(from) ? from : "" };
+}
+
+function clearSharedFromUrl() {
+  if (!location.search) return;
+  const url = new URL(location.href);
+  url.searchParams.delete("p");
+  url.searchParams.delete("from");
+  history.replaceState(null, "", url.pathname + (url.search || "") + url.hash);
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,6 +135,7 @@ async function postScore(points) {
 function showResult(won) {
   state.finished = true;
   state.revealed = true;
+  state.lastWon = won;
   state.hidden = new Set();
   renderTable();
 
@@ -122,6 +143,7 @@ function showResult(won) {
   const resultEl = $("result");
   resultEl.hidden = false;
   resultEl.classList.toggle("win", won);
+  $("share-feedback").textContent = "";
   $("result-headline").textContent = won ? "Got it!" : "Out of guesses";
   const points = won ? Math.max(10 - state.guesses - state.hintsUsed * 2, 1) : 0;
   state.score += points;
@@ -200,15 +222,24 @@ async function newRound() {
   $("table-wrap").innerHTML = '<div id="table-loading">Loading stat line…</div>';
   renderStatus();
 
-  const pool = getFilteredPool();
-  renderPoolCount(pool);
-  if (!pool.length) {
-    setFeedback("No players match these filters. Try widening Era or Position.", "bad");
-    $("table-wrap").innerHTML = "";
-    return;
+  // Shared challenge gets priority for round 1; pool filters skipped.
+  let id;
+  if (state.shared) {
+    id = state.shared.slug;
+    showChallengeBanner(state.shared.from);
+    state.shared = null;            // single-shot
+    clearSharedFromUrl();
+  } else {
+    hideChallengeBanner();
+    const pool = getFilteredPool();
+    renderPoolCount(pool);
+    if (!pool.length) {
+      setFeedback("No players match these filters. Try widening Era or Position.", "bad");
+      $("table-wrap").innerHTML = "";
+      return;
+    }
+    id = pickRandomId(pool);
   }
-
-  const id = pickRandomId(pool);
   if (!id) return;
 
   try {
@@ -217,12 +248,58 @@ async function newRound() {
     state.player = await res.json();
     state.hidden = new Set(state.player.hidden_cols || []);
   } catch (e) {
-    setFeedback(`Couldn't load player (${id}). Trying another…`, "bad");
+    setFeedback(`Couldn't load that player (${id}).`, "bad");
     return newRound();
   }
   renderTable();
   setFeedback("");
   $("guess-input").focus();
+}
+
+function showChallengeBanner(from) {
+  const el = $("challenge-banner");
+  if (!el) return;
+  const who = from ? `@${from}` : "A friend";
+  el.innerHTML = `<span>🔗 ${who} sent you this player — can you guess them?</span>`;
+  el.hidden = false;
+}
+
+function hideChallengeBanner() {
+  const el = $("challenge-banner");
+  if (el) { el.hidden = true; el.innerHTML = ""; }
+}
+
+async function shareCurrentPlayer() {
+  if (!state.player) return;
+  const url = new URL(location.origin + location.pathname);
+  url.searchParams.set("p", state.player.slug);
+  if (state.username) url.searchParams.set("from", state.username);
+
+  const verdict = state.lastWon ? "🟢" : "💀";
+  const who = state.username ? `@${state.username}` : "Someone";
+  const detail = state.lastWon
+    ? `${state.guesses} guess${state.guesses === 1 ? "" : "es"}, ${state.hintsUsed} hint${state.hintsUsed === 1 ? "" : "s"}`
+    : "stumped";
+  const text = `Baseball Guess: ${who} ${verdict} ${detail}\nYour turn: ${url.toString()}`;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    flashShareFeedback("Copied! Paste it to a friend.");
+  } catch (e) {
+    // Fallback for browsers without clipboard API
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); flashShareFeedback("Copied! Paste it to a friend."); }
+    catch { flashShareFeedback("Copy failed — long-press to copy this link manually.", true); }
+    ta.remove();
+  }
+}
+
+function flashShareFeedback(msg, isErr = false) {
+  const el = $("share-feedback");
+  el.textContent = msg;
+  el.classList.toggle("err", !!isErr);
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000);
 }
 
 function revealHint() {
@@ -460,6 +537,9 @@ async function init() {
   $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
   $("username-form").addEventListener("submit", saveUsername);
   $("username-pill").addEventListener("click", showUsernameModal);
+  $("share-btn").addEventListener("click", shareCurrentPlayer);
+
+  state.shared = getSharedFromUrl();
 
   // Autocomplete
   $("guess-input").addEventListener("input", updateAutocomplete);
