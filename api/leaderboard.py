@@ -18,7 +18,8 @@ UPSTASH_URL = os.environ.get("KV_REST_API_URL", "").rstrip("/")
 UPSTASH_TOKEN = os.environ.get("KV_REST_API_TOKEN", "")
 SCORES_KEY = "scores"
 ROUNDS_KEY = "rounds"
-EXTREME_KEY = "extreme:users"
+EXTREME_COUNT_KEY = "extreme:wins"   # hash: { username: integer count }
+EXTREME_LEGACY_KEY = "extreme:users" # legacy set (pre-counter); treated as count=1
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-]{2,20}$")
 MAX_POINTS_PER_ROUND = 100  # sanity cap — no one round should give more than this
@@ -69,11 +70,20 @@ class handler(BaseHTTPRequestHandler):
                     scores.append({"username": arr[i], "score": int(float(arr[i + 1]))})
                 except (ValueError, IndexError):
                     continue
-            # Set of users who've ever beaten Extreme
-            extreme_users: set[str] = set()
+            # Extreme-win counts per user (hash). Falls back to legacy set if pre-counter.
+            extreme_counts: dict[str, int] = {}
             try:
-                ext_r = kv(["SMEMBERS", EXTREME_KEY])
-                extreme_users = set(ext_r.get("result") or [])
+                h = kv(["HGETALL", EXTREME_COUNT_KEY])
+                arr = h.get("result", []) or []
+                for i in range(0, len(arr), 2):
+                    try: extreme_counts[arr[i]] = int(arr[i + 1])
+                    except (ValueError, IndexError): continue
+            except Exception:
+                pass
+            legacy_extreme: set[str] = set()
+            try:
+                s_r = kv(["SMEMBERS", EXTREME_LEGACY_KEY])
+                legacy_extreme = set(s_r.get("result") or [])
             except Exception:
                 pass
             # Rounds (plays) per shown user
@@ -88,7 +98,11 @@ class handler(BaseHTTPRequestHandler):
                 pass
             for s in scores:
                 s["rounds"] = rounds_map.get(s["username"], 0)
-                s["extreme"] = s["username"] in extreme_users
+                count = extreme_counts.get(s["username"], 0)
+                if not count and s["username"] in legacy_extreme:
+                    count = 1
+                s["extremes"] = count
+                s["extreme"]  = count > 0   # back-compat
             return self._send(200, {"scores": scores})
         except Exception as e:
             return self._send(500, {"error": str(e)})
@@ -107,7 +121,7 @@ class handler(BaseHTTPRequestHandler):
             kv(["ZINCRBY", SCORES_KEY, str(points), username])
             kv(["ZINCRBY", ROUNDS_KEY, "1", username])
             if extreme:
-                kv(["SADD", EXTREME_KEY, username])
+                kv(["HINCRBY", EXTREME_COUNT_KEY, username, "1"])
             return self._send(200, {"ok": True})
         except json.JSONDecodeError:
             return self._send(400, {"error": "Invalid JSON."})

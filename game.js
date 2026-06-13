@@ -293,13 +293,16 @@ function showResult(won) {
   localStorage.setItem("bg.score", String(state.score));
 
   // Local stats
-  const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false}');
+  const localStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false,"extremeWinsTotal":0}');
   localStats.rounds += 1;
   if (won) {
     localStats.wins += 1;
     localStats.total += points;
     if (points > localStats.best) localStats.best = points;
-    if (state.isExtreme) localStats.extreme = true;
+    if (state.isExtreme) {
+      localStats.extreme = true;
+      localStats.extremeWinsTotal = (localStats.extremeWinsTotal || 0) + 1;
+    }
   }
   localStorage.setItem("bg.stats", JSON.stringify(localStats));
 
@@ -759,16 +762,23 @@ function showLeaderboardModal() {
 }
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 
+function extremeBadgeText(n) {
+  if (!n) return "";
+  return n > 1 ? `🚨×${n}` : "🚨";
+}
+
 function renderLocalStatsCard() {
-  const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false}');
+  const s = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"total":0,"best":0,"extreme":false,"extremeWinsTotal":0}');
   const winRate = s.rounds ? Math.round((s.wins / s.rounds) * 100) : 0;
+  const exTotal = s.extremeWinsTotal || (s.extreme ? 1 : 0);
   const maxLvl = state.maxExtremeLevel || 0;
-  const extremeBadge = maxLvl > 0
-    ? ` 🚨 lv ${EXTREME_LEVELS[Math.min(maxLvl - 1, EXTREME_LEVELS.length - 1)].label}`
+  const ladder = maxLvl > 0
+    ? ` · lv ${EXTREME_LEVELS[Math.min(maxLvl - 1, EXTREME_LEVELS.length - 1)].label}`
     : "";
+  const badge = exTotal > 0 ? ` ${extremeBadgeText(exTotal)}${ladder}` : "";
   return `
     <div class="stats-card">
-      <div class="stat"><span class="label">Your score${extremeBadge}</span><span class="value">${s.total}</span></div>
+      <div class="stat"><span class="label">Your score${badge}</span><span class="value">${s.total}</span></div>
       <div class="stat"><span class="label">Wins</span><span class="value">${s.wins}/${s.rounds}</span></div>
       <div class="stat"><span class="label">Win %</span><span class="value">${winRate}%</span></div>
     </div>`;
@@ -791,7 +801,8 @@ async function loadLeaderboard() {
           <tbody>
             ${scores.map((s, i) => {
               const me = state.username && s.username === state.username ? " class='me'" : "";
-              const badge = s.extreme ? "🚨 " : "";
+              const exCount = (s.extremes != null) ? s.extremes : (s.extreme ? 1 : 0);
+              const badge = exCount > 0 ? `${extremeBadgeText(exCount)} ` : "";
               return `<tr${me}><td>${i + 1}</td><td>${badge}@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
             }).join("")}
           </tbody>
