@@ -1,6 +1,6 @@
 // Service Worker — heavy pre-cache + stale-while-revalidate
 // Bump SHELL_VERSION on each release to evict the old shell cache.
-const SHELL_VERSION = "2026-06-14-002";
+const SHELL_VERSION = "2026-06-14-003";
 const DATA_VERSION  = "v7";          // bump to force a fresh bulk re-cache of /data/
 const SHELL_CACHE = `bg-shell-${SHELL_VERSION}`;
 const DATA_CACHE  = `bg-data-${DATA_VERSION}`;
@@ -41,9 +41,12 @@ async function installAll() {
     return;
   }
 
+  // Iterate over whatever tier keys are actually in the manifest so tier
+  // renames in the future don't silently drop the pre-cache step.
   const ids = new Set();
-  for (const tier of ["famous", "pros", "alltime"]) {
-    for (const p of (manifest[tier] || [])) ids.add(p.id);
+  for (const tier of Object.keys(manifest)) {
+    const list = manifest[tier];
+    if (Array.isArray(list)) for (const p of list) ids.add(p.id);
   }
   const urls = [...ids].map((id) => `./data/players/${id}.json`);
 
