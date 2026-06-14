@@ -95,6 +95,7 @@ const state = {
   tier: localStorage.getItem("bg.tier") || "famous",
   era:  localStorage.getItem("bg.era")  || "all",
   pos:  localStorage.getItem("bg.pos")  || "all",
+  team: localStorage.getItem("bg.team") || "all",
   username: localStorage.getItem("bg.username") || "",
   player: null,
   lastWon: false,
@@ -238,16 +239,24 @@ function renderTable() {
 
 // ---------- Pool filtering ----------
 
+function playerHasTeam(entry, teamCode) {
+  if (!entry.tm) return false;
+  const list = entry.tm.split(",");
+  return list.includes(teamCode);
+}
+
 function getFilteredPool() {
   const base = state.manifest?.[state.tier] || [];
   const [eraLo, eraHi] = ERA_RANGES[state.era] || [];
   const pos = state.pos === "all" ? null : state.pos;
+  const team = state.team === "all" ? null : state.team;
   return base.filter(e => {
     if (pos && e.p !== pos) return false;
     if (eraLo != null) {
       if (e.l == null || e.f == null) return false;
       if (e.l < eraLo || e.f > eraHi) return false;
     }
+    if (team && !playerHasTeam(e, team)) return false;
     return true;
   });
 }
@@ -258,12 +267,22 @@ function getExtremePool() {
   return base.filter(e => (e.f || 9999) >= EXTREME_START_YEAR && (e.t || 0) >= 2);
 }
 
+const TEAM_DISPLAY_NAMES = {
+  ARI:"Diamondbacks",ATL:"Braves",BAL:"Orioles",BOS:"Red Sox",CHC:"Cubs",
+  CHW:"White Sox",CIN:"Reds",CLE:"Guardians",COL:"Rockies",DET:"Tigers",
+  HOU:"Astros",KCR:"Royals",LAA:"Angels",LAD:"Dodgers",MIA:"Marlins",
+  MIL:"Brewers",MIN:"Twins",NYM:"Mets",NYY:"Yankees",OAK:"Athletics",
+  PHI:"Phillies",PIT:"Pirates",SDP:"Padres",SEA:"Mariners",SFG:"Giants",
+  STL:"Cardinals",TBR:"Rays",TEX:"Rangers",TOR:"Blue Jays",WSN:"Nationals",
+};
+
 function renderPoolCount(pool) {
   const el = $("pool-count");
   if (!el) return;
   const parts = [];
   if (state.era !== "all")  parts.push(state.era);
   if (state.pos !== "all")  parts.push(({P:"pitchers",C:"catchers",IF:"infield",OF:"outfield",DH:"DH"})[state.pos]);
+  if (state.team !== "all") parts.push(TEAM_DISPLAY_NAMES[state.team] || state.team);
   const suffix = parts.length ? ` (${parts.join(", ")})` : "";
   el.textContent = `${pool.length} player${pool.length === 1 ? "" : "s"} in pool${suffix}`;
 }
@@ -784,6 +803,11 @@ function onPosChange(e) {
   localStorage.setItem("bg.pos", state.pos);
   newRound();
 }
+function onTeamChange(e) {
+  state.team = e.target.value;
+  localStorage.setItem("bg.team", state.team);
+  newRound();
+}
 
 // ---------- Autocomplete ----------
 
@@ -1072,9 +1096,11 @@ async function init() {
   $("tier").value = state.tier;
   $("era").value  = state.era;
   $("pos").value  = state.pos;
+  $("team").value = state.team;
   $("tier").addEventListener("change", onTierChange);
   $("era").addEventListener("change", onEraChange);
   $("pos").addEventListener("change", onPosChange);
+  $("team").addEventListener("change", onTeamChange);
   $("guess-form").addEventListener("submit", submitGuess);
   $("hint-btn").addEventListener("click", revealHint);
   $("giveup-btn").addEventListener("click", giveUp);
