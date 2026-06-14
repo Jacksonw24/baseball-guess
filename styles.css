@@ -695,28 +695,6 @@ footer {
 }
 footer small { font-size: 12px; }
 
-/* ---------- Pinned guess input on mobile ---------- */
-@media (max-width: 720px) {
-  #guess-area {
-    position: sticky;
-    bottom: 0;
-    background: var(--bg);
-    padding: 10px 0 max(10px, env(safe-area-inset-bottom));
-    margin: 0 calc(-1 * max(18px, env(safe-area-inset-left)))
-              calc(-1 * max(60px, env(safe-area-inset-bottom)))
-              calc(-1 * max(18px, env(safe-area-inset-right)));
-    padding-left:  max(18px, env(safe-area-inset-left));
-    padding-right: max(18px, env(safe-area-inset-right));
-    z-index: 5;
-    box-shadow: 0 -8px 16px rgba(11,29,58,0.6);
-  }
-  /* Autocomplete: flip to drop-up since input is at bottom */
-  .ac-wrap .ac-list {
-    top: auto;
-    bottom: calc(100% + 4px);
-  }
-  /* Make the table the main scroll target */
-  #table-wrap { flex: 1; }
-  /* Hint box scrolls with content above the pinned input */
-  #hint-box { margin-bottom: 8px; }
-}
+/* Pinned-input on mobile was reverted — the hint cards stacking inside the
+   sticky container produced odd dead space when many hints were revealed.
+   Letting the input scroll with content for now. */
