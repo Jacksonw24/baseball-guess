@@ -1612,6 +1612,10 @@ function registerServiceWorker() {
 function showInstallProgress(done, total) {
   const wrap = $("install-progress");
   if (!wrap) return;
+  // If everything's already cached when the first progress message arrives,
+  // there's nothing to actually download — don't flash the bar. This is the
+  // "I just re-opened the app" case after the SW updated the shell.
+  if (done >= total && wrap.hidden) return;
   wrap.hidden = false;
   const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
   $("ip-fill").style.width = `${pct}%`;
@@ -1619,7 +1623,7 @@ function showInstallProgress(done, total) {
 }
 function flashInstallComplete(total) {
   const wrap = $("install-progress");
-  if (!wrap) return;
+  if (!wrap || wrap.hidden) return;   // we never showed the bar; skip the toast
   $("ip-fill").style.width = "100%";
   $("ip-label").textContent = `Ready for offline play (${total} players cached)`;
   setTimeout(() => { wrap.hidden = true; }, 2500);

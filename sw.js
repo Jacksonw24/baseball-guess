@@ -1,7 +1,14 @@
 // Service Worker — heavy pre-cache + stale-while-revalidate
-// Bump SHELL_VERSION on each release to evict the old shell cache.
-const SHELL_VERSION = "2026-06-14-006";
-const DATA_VERSION  = "v7";          // bump to force a fresh bulk re-cache of /data/
+//
+// Bump SHELL_VERSION on each release to evict the old shell cache. Cheap.
+// Do NOT bump DATA_VERSION unless the data schema changes in an
+// incompatible way — bumping it nukes every user's cached players and
+// forces a fresh ~24 MB re-download on next visit. The default flow is:
+//   - Shell changes (HTML/JS/CSS) → bump SHELL_VERSION only
+//   - Player JSON additions → SWR catches them lazily on demand
+//   - Per-entry data tweaks → SWR keeps them fresh in the background
+const SHELL_VERSION = "2026-06-14-007";
+const DATA_VERSION  = "v7";
 const SHELL_CACHE = `bg-shell-${SHELL_VERSION}`;
 const DATA_CACHE  = `bg-data-${DATA_VERSION}`;
 
