@@ -1425,7 +1425,14 @@ function updateAutocomplete() {
 
   if (!q) { closeAutocomplete(); return; }
 
-  const pool = getFilteredPool();
+  let pool = getFilteredPool();
+  // If the round's actual answer is outside the filtered pool (shared-challenge
+  // link, etc.), supplement the pool so the user can still autocomplete to it.
+  if (state.player?.slug && !pool.some(e => e.id === state.player.slug)) {
+    const psycho = state.manifest?.psycho || [];
+    const fromAll = psycho.find(e => e.id === state.player.slug);
+    if (fromAll) pool = [fromAll, ...pool];
+  }
   const matches = [];
   for (const e of pool) {
     if (!e._n) e._n = normalize(e.name);

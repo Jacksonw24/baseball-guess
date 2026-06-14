@@ -7,7 +7,7 @@
 //   - Shell changes (HTML/JS/CSS) → bump SHELL_VERSION only
 //   - Player JSON additions → SWR catches them lazily on demand
 //   - Per-entry data tweaks → SWR keeps them fresh in the background
-const SHELL_VERSION = "2026-06-14-008";
+const SHELL_VERSION = "2026-06-14-009";
 const DATA_VERSION  = "v7";
 const SHELL_CACHE = `bg-shell-${SHELL_VERSION}`;
 const DATA_CACHE  = `bg-data-${DATA_VERSION}`;
