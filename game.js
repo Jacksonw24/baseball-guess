@@ -147,6 +147,15 @@ const state = {
 
 const SLUG_RE = /^[a-z][a-z0-9]{3,14}$/i;
 
+// On touch devices, skip the auto-focus calls that pop the soft keyboard.
+// Users tap the input themselves when they're ready to guess.
+const IS_TOUCH = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+function maybeFocus(id) {
+  if (IS_TOUCH) return;
+  const el = $(id);
+  if (el) el.focus();
+}
+
 function getSharedFromUrl() {
   const params = new URLSearchParams(location.search);
   const p = params.get("p");
@@ -626,9 +635,9 @@ async function newRound() {
   }
   renderTable();
   if (state.isExtreme) {
-    $("extreme-input").focus();
+    maybeFocus("extreme-input");
   } else {
-    $("guess-input").focus();
+    maybeFocus("guess-input");
   }
 }
 
@@ -714,7 +723,7 @@ function submitExtreme(e) {
     setTimeout(() => showResult(false), 700);
     return;
   }
-  $("extreme-input").focus();
+  maybeFocus("extreme-input");
 }
 
 function extremeGiveUp() {
@@ -820,7 +829,7 @@ async function submitGuess(e) {
   $("guess-input").value = "";
   setFeedback(`Not "${guess}" — try again.`, "bad");
   if (state.guesses >= 6) showResult(false);
-  else $("guess-input").focus();
+  else maybeFocus("guess-input");
 }
 
 function giveUp() { if (!state.isExtreme && !state.finished) showResult(false); }
