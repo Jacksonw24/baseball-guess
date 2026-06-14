@@ -708,17 +708,19 @@ function addUniqueShare(slug) {
 }
 
 function computeSnapshot() {
+  // Achievements track only activity from the moment the system shipped.
+  // No counts get pulled from the pre-existing bg.stats / state.maxExtremeLevel.
   const events = loadEvents();
   const c = loadCounters();
-  const baseStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"extremeWinsTotal":0}');
 
-  const totalWins   = Math.max(events.length, c.lifetimeWins   || 0, baseStats.wins   || 0);
-  const totalRounds = Math.max(c.lifetimeRounds || 0, baseStats.rounds || 0);
+  const totalWins   = events.length;
+  const totalRounds = c.lifetimeRounds || 0;
 
   const teams = new Set(), decades = new Set(), countries = new Set(), positions = new Set();
   const names = new Set();
   const tierWinsByTier = { well_known:0, ball_knowledge:0, stathead:0, psycho:0 };
   let noHint=0, oneG=0, sixG=0, pitchFast=0, maxHints=0, extremes=0;
+  let maxExtLevel = 0;
 
   for (const ev of events) {
     names.add(ev.name);
@@ -734,12 +736,12 @@ function computeSnapshot() {
     if (!ev.isExtreme && ev.guesses === 6) sixG++;
     if (ev.hintsUsed > maxHints) maxHints = ev.hintsUsed;
     if (ev.pos === "P" && ev.guesses <= 3) pitchFast++;
-    if (ev.isExtreme) extremes++;
+    if (ev.isExtreme) {
+      extremes++;
+      if (ev.extremeLevel && ev.extremeLevel > maxExtLevel) maxExtLevel = ev.extremeLevel;
+    }
     if (ev.tier && (ev.tier in tierWinsByTier)) tierWinsByTier[ev.tier]++;
   }
-
-  // Backwards-compat: extreme count from existing bg.stats if higher
-  extremes = Math.max(extremes, baseStats.extremeWinsTotal || 0);
 
   return {
     totalWins, totalRounds,
@@ -758,7 +760,7 @@ function computeSnapshot() {
     namesHit: names,
     uniquePlayersHit: names.size,
     extremesCleared: extremes,
-    maxExtremeLevel: state?.maxExtremeLevel || 0,
+    maxExtremeLevel: maxExtLevel,
     bestExtremeChain: c.bestExtremeChain || 0,
     flawlessHighExtreme: c.flawlessHighExtreme === true,
     allTiersExtremeCleared: c.allTiersExtremeCleared === true,
@@ -824,7 +826,8 @@ function processAchQueue() {
 
 // --------------- Gallery ---------------
 function openAchievementModal() {
-  bumpCounter("leaderboardViews", 0); // unrelated counter; placeholder
+  // Close the leaderboard modal first if it's open — stacking gets weird otherwise
+  const lb = $("leaderboard-modal"); if (lb) lb.hidden = true;
   const { snap, unlocked } = evaluateAchievements();
   const modal = $("achievement-modal");
   if (!modal) return;
@@ -1510,11 +1513,6 @@ function showLeaderboardModal() {
   bumpCounter("leaderboardViews", 1);
   $("leaderboard-modal").hidden = false;
   loadLeaderboard();
-  // Hook the achievement-open button (lives inside the dynamic stats card)
-  setTimeout(() => {
-    const btn = $("open-achievements");
-    if (btn) btn.onclick = openAchievementModal;
-  }, 50);
   evaluateAchievements();
 }
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
@@ -1720,6 +1718,12 @@ async function init() {
   $("leaderboard-btn").addEventListener("click", showLeaderboardModal);
   $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
   $("achievement-close")?.addEventListener("click", closeAchievementModal);
+  // The "open achievements" button lives inside the dynamically-rendered stats
+  // card and is re-created on every load — use event delegation so the handler
+  // survives re-renders.
+  $("leaderboard-modal")?.addEventListener("click", (e) => {
+    if (e.target.closest("#open-achievements")) openAchievementModal();
+  });
   $("username-form").addEventListener("submit", saveUsername);
   $("username-pill").addEventListener("click", showUsernameModal);
   $("share-btn").addEventListener("click", shareCurrentPlayer);
