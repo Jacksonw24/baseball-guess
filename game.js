@@ -337,6 +337,541 @@ function renderPoolCount(pool) {
 
 const POST_QUEUE_KEY = "bg.postQueue";
 const SESSION_TOKEN_KEY = "bg.sessionToken";
+const EVENTS_KEY        = "bg.events";
+const ACHS_KEY          = "bg.achievements";
+const COUNTERS_KEY      = "bg.counters";
+const MAX_EVENTS        = 10000;
+
+const MODERN_TEAMS = new Set([
+  "ARI","ATL","BAL","BOS","CHC","CHW","CIN","CLE","COL","DET",
+  "HOU","KCR","LAA","LAD","MIA","MIL","MIN","NYM","NYY","OAK",
+  "PHI","PIT","SDP","SEA","SFG","STL","TBR","TEX","TOR","WSN",
+]);
+
+// --------------- Achievement definitions ---------------
+const CAT_ICON = {
+  welcome:"🌱", volume:"📦", streak:"🔥", skill:"🎯",
+  variety:"🌎", extreme:"🚨", style:"🎨", hidden:"🕵️", legendary:"💎",
+};
+const CAT_ORDER = ["welcome","volume","streak","skill","variety","extreme","style","hidden","legendary"];
+
+const ACHIEVEMENTS = [
+  // 🌱 Welcome
+  { id:"first_pitch",  cat:"welcome",  title:"First Pitch",
+    desc:"Win your first round.",
+    check: s => s.totalWins >= 1, progress: s => [Math.min(s.totalWins,1), 1] },
+  { id:"streaker3",    cat:"welcome",  title:"Streaker",
+    desc:"Win 3 in a row.",
+    check: s => s.bestStreak >= 3, progress: s => [Math.min(s.bestStreak,3), 3] },
+  { id:"comeback_kid", cat:"welcome",  title:"Comeback Kid",
+    desc:"Win after using 4+ hints in a single round.",
+    check: s => s.maxHintsInAWin >= 4, progress: s => [Math.min(s.maxHintsInAWin,4), 4] },
+  { id:"bullpen",      cat:"welcome",  title:"Bullpen",
+    desc:"Win 5 rounds in one session.",
+    check: s => s.sessionMaxWins >= 5, progress: s => [Math.min(s.sessionMaxWins,5), 5] },
+
+  // 📦 Volume
+  { id:"centurion_1", cat:"volume", title:"Centurion I",   desc:"100 lifetime wins.",
+    check: s => s.totalWins >= 100,  progress: s => [s.totalWins,100] },
+  { id:"centurion_2", cat:"volume", title:"Centurion II",  desc:"500 lifetime wins.",
+    check: s => s.totalWins >= 500,  progress: s => [s.totalWins,500] },
+  { id:"centurion_3", cat:"volume", title:"Centurion III", desc:"2,000 lifetime wins.",
+    check: s => s.totalWins >= 2000, progress: s => [s.totalWins,2000] },
+  { id:"marathoner_1", cat:"volume", title:"Marathoner I",   desc:"250 rounds played.",
+    check: s => s.totalRounds >= 250,  progress: s => [s.totalRounds,250] },
+  { id:"marathoner_2", cat:"volume", title:"Marathoner II",  desc:"1,000 rounds played.",
+    check: s => s.totalRounds >= 1000, progress: s => [s.totalRounds,1000] },
+  { id:"marathoner_3", cat:"volume", title:"Marathoner III", desc:"5,000 rounds played.",
+    check: s => s.totalRounds >= 5000, progress: s => [s.totalRounds,5000] },
+  { id:"daily_pilgrim_1", cat:"volume", title:"Daily Pilgrim I",   desc:"7-day daily streak.",
+    check: s => s.dailyStreakBest >= 7,   progress: s => [Math.min(s.dailyStreakBest,7),7] },
+  { id:"daily_pilgrim_2", cat:"volume", title:"Daily Pilgrim II",  desc:"30-day daily streak.",
+    check: s => s.dailyStreakBest >= 30,  progress: s => [Math.min(s.dailyStreakBest,30),30] },
+  { id:"daily_pilgrim_3", cat:"volume", title:"Daily Pilgrim III", desc:"100-day daily streak.",
+    check: s => s.dailyStreakBest >= 100, progress: s => [Math.min(s.dailyStreakBest,100),100] },
+
+  // 🔥 Streak
+  { id:"hot_hand_1", cat:"streak", title:"Hot Hand I",   desc:"10 wins in a row.",
+    check: s => s.bestStreak >= 10,  progress: s => [Math.min(s.bestStreak,10),10] },
+  { id:"hot_hand_2", cat:"streak", title:"Hot Hand II",  desc:"25 wins in a row.",
+    check: s => s.bestStreak >= 25,  progress: s => [Math.min(s.bestStreak,25),25] },
+  { id:"hot_hand_3", cat:"streak", title:"Hot Hand III", desc:"50 wins in a row.",
+    check: s => s.bestStreak >= 50,  progress: s => [Math.min(s.bestStreak,50),50] },
+  { id:"untouchable", cat:"streak", title:"Untouchable",  desc:"100 wins in a row.",
+    check: s => s.bestStreak >= 100, progress: s => [Math.min(s.bestStreak,100),100] },
+  { id:"iron_heart",  cat:"streak", title:"Iron Heart",
+    desc:"Finish a 30-round session without losing.",
+    check: s => s.cleanSessionRounds >= 30 },
+
+  // 🎯 Skill
+  { id:"no_help_1", cat:"skill", title:"No Help Needed I",   desc:"25 hint-free wins.",
+    check: s => s.noHintWins >= 25,  progress: s => [s.noHintWins,25] },
+  { id:"no_help_2", cat:"skill", title:"No Help Needed II",  desc:"100 hint-free wins.",
+    check: s => s.noHintWins >= 100, progress: s => [s.noHintWins,100] },
+  { id:"no_help_3", cat:"skill", title:"No Help Needed III", desc:"500 hint-free wins.",
+    check: s => s.noHintWins >= 500, progress: s => [s.noHintWins,500] },
+  { id:"one_look_1", cat:"skill", title:"One Look I",   desc:"10 one-guess wins.",
+    check: s => s.oneGuessWins >= 10,  progress: s => [s.oneGuessWins,10] },
+  { id:"one_look_2", cat:"skill", title:"One Look II",  desc:"50 one-guess wins.",
+    check: s => s.oneGuessWins >= 50,  progress: s => [s.oneGuessWins,50] },
+  { id:"one_look_3", cat:"skill", title:"One Look III", desc:"250 one-guess wins.",
+    check: s => s.oneGuessWins >= 250, progress: s => [s.oneGuessWins,250] },
+  { id:"photo_finish", cat:"skill", title:"Photo Finish",
+    desc:"25 wins on your 6th and final guess.",
+    check: s => s.sixthGuessWins >= 25, progress: s => [s.sixthGuessWins,25] },
+  { id:"pitchers_pitcher", cat:"skill", title:"Pitcher's Pitcher",
+    desc:"20 pitcher wins under 4 guesses each.",
+    check: s => s.pitcherQuickWins >= 20, progress: s => [s.pitcherQuickWins,20] },
+
+  // 🌎 Variety
+  { id:"thirty_thirty", cat:"variety", title:"30/30 Club",
+    desc:"Win against a player from every modern franchise.",
+    check: s => s.modernTeamsHit >= 30, progress: s => [s.modernTeamsHit,30] },
+  { id:"time_traveler", cat:"variety", title:"Time Traveler",
+    desc:"Win in every decade from 1900s through 2020s (13 decades).",
+    check: s => s.decadesHit >= 13, progress: s => [s.decadesHit,13] },
+  { id:"polyglot_1", cat:"variety", title:"Polyglot I",   desc:"Players from 5 different countries.",
+    check: s => s.countriesHit >= 5,  progress: s => [s.countriesHit,5] },
+  { id:"polyglot_2", cat:"variety", title:"Polyglot II",  desc:"Players from 10 different countries.",
+    check: s => s.countriesHit >= 10, progress: s => [s.countriesHit,10] },
+  { id:"polyglot_3", cat:"variety", title:"Polyglot III", desc:"Players from 20 different countries.",
+    check: s => s.countriesHit >= 20, progress: s => [s.countriesHit,20] },
+  { id:"position_master", cat:"variety", title:"Position Master",
+    desc:"Win against each of the 10 specific positions.",
+    check: s => s.positionsHit >= 10, progress: s => [s.positionsHit,10] },
+
+  // 🚨 Extreme
+  { id:"pop_off",       cat:"extreme", title:"Pop Off",
+    desc:"Clear your first Extreme.",
+    check: s => s.extremesCleared >= 1 },
+  { id:"five_for_five", cat:"extreme", title:"Five for Five",
+    desc:"Clear Extreme V.",
+    check: s => s.maxExtremeLevel >= 5 },
+  { id:"the_boss",      cat:"extreme", title:"The Boss",
+    desc:"Clear Extreme VI+.",
+    check: s => s.maxExtremeLevel >= 6 },
+  { id:"unbroken_5",    cat:"extreme", title:"Unbroken",
+    desc:"Extreme chain of 5 consecutive clears.",
+    check: s => s.bestExtremeChain >= 5, progress: s => [Math.min(s.bestExtremeChain,5),5] },
+  { id:"unbroken_10",   cat:"extreme", title:"Unbroken II",
+    desc:"Extreme chain of 10 consecutive clears.",
+    check: s => s.bestExtremeChain >= 10, progress: s => [Math.min(s.bestExtremeChain,10),10] },
+  { id:"phoenix",       cat:"extreme", title:"The Phoenix",
+    desc:"Clear Extreme VI+ without using a strike.",
+    check: s => s.flawlessHighExtreme === true },
+
+  // 🎨 Style
+  { id:"bombs_away", cat:"style", title:"Bombs Away",
+    desc:"50 wins on sluggers (300+ career HR).",
+    check: s => s.sluggerWins >= 50, progress: s => [s.sluggerWins,50] },
+  { id:"the_ace", cat:"style", title:"The Ace",
+    desc:"50 wins on ace pitchers (career WAR ≥ 40).",
+    check: s => s.aceWins >= 50, progress: s => [s.aceWins,50] },
+  { id:"late_night", cat:"style", title:"Late Night Special",
+    desc:"Play 3 rounds between 2am and 5am local time.",
+    check: s => s.lateNightRounds >= 3, progress: s => [Math.min(s.lateNightRounds,3),3] },
+  { id:"comeback_tour", cat:"style", title:"Comeback Tour",
+    desc:"Return after 30+ days away.",
+    check: s => s.gappedReturn === true },
+  { id:"the_mentor", cat:"style", title:"The Mentor",
+    desc:"Share 25 unique players via deep link.",
+    check: s => s.uniqueShares >= 25, progress: s => [s.uniqueShares,25] },
+  { id:"open_books", cat:"style", title:"Open Books",
+    desc:"Open the leaderboard 25 times.",
+    check: s => s.leaderboardViews >= 25, progress: s => [s.leaderboardViews,25] },
+  { id:"speakers_corner", cat:"style", title:"Speaker's Corner",
+    desc:"Change your username 5+ times.",
+    check: s => s.usernameChanges >= 5, progress: s => [s.usernameChanges,5] },
+
+  // 🕵️ Hidden — render as ??? until unlocked
+  { id:"dog_photo",     cat:"hidden", hidden:true, title:"Dog Photo",
+    desc:"There's no way you guessed Pete Crow-Armstrong.",
+    check: s => s.namesHit.has("Pete Crow-Armstrong") },
+  { id:"the_bambino",   cat:"hidden", hidden:true, title:"The Bambino",
+    desc:"You called your shot.",
+    check: s => s.namesHit.has("Babe Ruth") },
+  { id:"iron_man",      cat:"hidden", hidden:true, title:"Iron Man",
+    desc:"2,632 games in a row, baby.",
+    check: s => s.namesHit.has("Cal Ripken Jr.") },
+  { id:"two_way",       cat:"hidden", hidden:true, title:"Two-Way",
+    desc:"You spotted the once-in-a-century.",
+    check: s => s.namesHit.has("Shohei Ohtani") },
+  { id:"four_hundred",  cat:"hidden", hidden:true, title:".400",
+    desc:"The last man to do it.",
+    check: s => s.namesHit.has("Ted Williams") },
+  { id:"the_hammer",    cat:"hidden", hidden:true, title:"The Hammer",
+    desc:"715 and counting.",
+    check: s => s.namesHit.has("Hank Aaron") },
+  { id:"lefty_x3",      cat:"hidden", hidden:true, title:"Lefty Lefty Lefty",
+    desc:"Five lefty-throwing wins in a row.",
+    check: s => s.bestLeftyStreak >= 5 },
+
+  // 💎 Legendary
+  { id:"encyclopedia", cat:"legendary", title:"Encyclopedia",
+    desc:"Win against every player in the manifest.",
+    check: s => s.uniquePlayersHit >= 12071, progress: s => [s.uniquePlayersHit,12071] },
+  { id:"stathead_certified", cat:"legendary", title:"Stathead Certified",
+    desc:"250 Stathead-tier wins.",
+    check: s => (s.tierWinsByTier.stathead||0) >= 250,
+    progress: s => [s.tierWinsByTier.stathead||0,250] },
+  { id:"psycho_certified", cat:"legendary", title:"Psycho Certified",
+    desc:"100 Psycho-tier wins.",
+    check: s => (s.tierWinsByTier.psycho||0) >= 100,
+    progress: s => [s.tierWinsByTier.psycho||0,100] },
+  { id:"boss_x4", cat:"legendary", title:"Boss × 4",
+    desc:"Clear Extreme on all 4 difficulty tiers.",
+    check: s => s.allTiersExtremeCleared === true },
+];
+
+// --------------- Achievement persistence ---------------
+
+function loadEvents()   { try { return JSON.parse(localStorage.getItem(EVENTS_KEY)   || "[]"); } catch { return []; } }
+function saveEvents(a)  { localStorage.setItem(EVENTS_KEY,   JSON.stringify(a.length > MAX_EVENTS ? a.slice(-MAX_EVENTS) : a)); }
+function loadUnlocked() { try { return JSON.parse(localStorage.getItem(ACHS_KEY)     || "{}"); } catch { return {}; } }
+function saveUnlocked(m){ localStorage.setItem(ACHS_KEY,     JSON.stringify(m)); }
+function loadCounters() { try { return JSON.parse(localStorage.getItem(COUNTERS_KEY) || "{}"); } catch { return {}; } }
+function saveCounters(c){ localStorage.setItem(COUNTERS_KEY, JSON.stringify(c)); }
+
+function parseCountry(hints) {
+  if (!hints) return "";
+  for (const h of hints) {
+    if (h.startsWith("Hometown:")) return "USA";
+    const m = h.match(/^Born in (.+)/);
+    if (m) return m[1].replace(/^the\s+/i, "").trim();
+  }
+  return "";
+}
+function parsePos(hints) {
+  if (!hints?.length) return "";
+  const h = hints[0];
+  if (!h.startsWith("Position:")) return "";
+  const head = h.slice(9).split(" — ")[0].split(" and ")[0].trim();
+  return ({
+    "Pitcher":"P","Catcher":"C","Shortstop":"SS",
+    "First Baseman":"1B","Second Baseman":"2B","Third Baseman":"3B",
+    "Leftfielder":"LF","Centerfielder":"CF","Rightfielder":"RF",
+    "Outfielder":"OF","Designated Hitter":"DH",
+    "First Base":"1B","Second Base":"2B","Third Base":"3B",
+    "Left Fielder":"LF","Center Fielder":"CF","Right Fielder":"RF",
+  })[head] || "";
+}
+function parseThrows(hints) {
+  const m = hints?.[0]?.match(/throws (\w+)/);
+  return m ? m[1] : "";
+}
+function parseCareerHR(hints) {
+  for (const h of (hints || [])) {
+    const m = h.match(/Career:\s*(\d+)\s*HR/);
+    if (m) return parseInt(m[1], 10);
+  }
+  return 0;
+}
+
+function rowYears(player) {
+  if (!player?.headers) return [];
+  const yi = player.headers.findIndex(h => h.stat === "year_id");
+  if (yi < 0) return [];
+  const out = [];
+  for (const r of player.rows) {
+    const y = parseInt(r[yi], 10);
+    if (!isNaN(y)) out.push(y);
+  }
+  return out;
+}
+
+function decadeOf(year) { return Math.floor(year / 10) * 10; }
+
+function recordWinEvent(player, ctx) {
+  const years = rowYears(player);
+  const firstYear = years.length ? Math.min(...years) : null;
+  const lastYear  = years.length ? Math.max(...years) : null;
+  const teamSet   = new Set(extractTeams(player));
+  const ev = {
+    name: player.name,
+    slug: player.slug,
+    tier: ctx.tier,
+    pos:  parsePos(player.hints),
+    throws: parseThrows(player.hints),
+    country: parseCountry(player.hints) || "USA",
+    teams: [...teamSet],
+    firstYear, lastYear,
+    careerHR: parseCareerHR(player.hints),
+    careerWar: ctx.careerWar || 0,
+    hintsUsed: ctx.hintsUsed,
+    guesses:   ctx.guesses,
+    isExtreme: !!ctx.isExtreme,
+    extremeLevel: ctx.extremeLevel || null,
+    extremeStrikes: ctx.extremeStrikes || 0,
+    ts: Date.now(),
+  };
+  const arr = loadEvents();
+  arr.push(ev);
+  saveEvents(arr);
+  return ev;
+}
+
+function updateRoundCounters(won, ev) {
+  const c = loadCounters();
+  const now = Date.now();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayKey = today.toISOString().slice(0,10);
+
+  // Daily streak (login-based)
+  const lastDay = c.lastDayPlayed;
+  if (lastDay !== todayKey) {
+    // Determine consecutive
+    if (lastDay) {
+      const d1 = new Date(lastDay); const d2 = new Date(todayKey);
+      const days = Math.round((d2 - d1) / 86400000);
+      if (days === 1) {
+        c.dailyStreakCur = (c.dailyStreakCur || 1) + 1;
+      } else if (days > 1) {
+        if (days >= 30 && (c.lifetimeWins || 0) > 0) c.gappedReturn = true;
+        c.dailyStreakCur = 1;
+      }
+    } else {
+      c.dailyStreakCur = 1;
+    }
+    c.lastDayPlayed = todayKey;
+    if ((c.dailyStreakCur || 0) > (c.dailyStreakBest || 0)) c.dailyStreakBest = c.dailyStreakCur;
+  }
+
+  // Late night
+  const hr = new Date().getHours();
+  if (hr >= 2 && hr < 5) c.lateNightRounds = (c.lateNightRounds || 0) + 1;
+
+  // Win streak (current + best)
+  if (won) {
+    c.winStreakCur = (c.winStreakCur || 0) + 1;
+    if (c.winStreakCur > (c.bestWinStreak || 0)) c.bestWinStreak = c.winStreakCur;
+    // Session clean
+    c.sessionWins = (c.sessionWins || 0) + 1;
+    c.sessionCleanRounds = (c.sessionCleanRounds || 0) + 1;
+    if ((c.sessionWins || 0) > (c.sessionMaxWins || 0)) c.sessionMaxWins = c.sessionWins;
+    if ((c.sessionCleanRounds || 0) > (c.bestCleanSessionRounds || 0))
+      c.bestCleanSessionRounds = c.sessionCleanRounds;
+  } else {
+    c.winStreakCur = 0;
+    c.sessionCleanRounds = 0;
+  }
+
+  // Lefty-throws win streak (only counts wins)
+  if (won && ev && ev.throws === "L") {
+    c.leftyStreakCur = (c.leftyStreakCur || 0) + 1;
+    if (c.leftyStreakCur > (c.bestLeftyStreak || 0)) c.bestLeftyStreak = c.leftyStreakCur;
+  } else if (!won) {
+    c.leftyStreakCur = 0;
+  } else {
+    c.leftyStreakCur = 0;
+  }
+
+  // Slugger / ace
+  if (won && ev) {
+    if (ev.careerHR >= 300) c.sluggerWins = (c.sluggerWins || 0) + 1;
+    if (ev.pos === "P" && ev.careerWar >= 40) c.aceWins = (c.aceWins || 0) + 1;
+  }
+
+  // Lifetime
+  c.lifetimeRounds = (c.lifetimeRounds || 0) + 1;
+  if (won) c.lifetimeWins = (c.lifetimeWins || 0) + 1;
+
+  // Extreme chain tracking (chain = consecutive Extreme clears)
+  if (won && ev && ev.isExtreme) {
+    c.extremeChainCur = (c.extremeChainCur || 0) + 1;
+    if (c.extremeChainCur > (c.bestExtremeChain || 0)) c.bestExtremeChain = c.extremeChainCur;
+    if (ev.extremeLevel >= 6 && ev.extremeStrikes === 0) c.flawlessHighExtreme = true;
+    c.tierExtremesCleared = c.tierExtremesCleared || {};
+    if (ev.tier) c.tierExtremesCleared[ev.tier] = true;
+    if (["well_known","ball_knowledge","stathead","psycho"]
+        .every(t => c.tierExtremesCleared[t])) c.allTiersExtremeCleared = true;
+  } else if (!won && ev && ev.isExtreme) {
+    c.extremeChainCur = 0;
+  }
+
+  saveCounters(c);
+}
+
+function bumpCounter(key, n = 1) {
+  const c = loadCounters();
+  c[key] = (c[key] || 0) + n;
+  saveCounters(c);
+}
+
+function addUniqueShare(slug) {
+  const c = loadCounters();
+  c.sharedSlugs = c.sharedSlugs || [];
+  if (!c.sharedSlugs.includes(slug)) {
+    c.sharedSlugs.push(slug);
+    c.uniqueShares = c.sharedSlugs.length;
+    saveCounters(c);
+  }
+}
+
+function computeSnapshot() {
+  const events = loadEvents();
+  const c = loadCounters();
+  const baseStats = JSON.parse(localStorage.getItem("bg.stats") || '{"rounds":0,"wins":0,"extremeWinsTotal":0}');
+
+  const totalWins   = Math.max(events.length, c.lifetimeWins   || 0, baseStats.wins   || 0);
+  const totalRounds = Math.max(c.lifetimeRounds || 0, baseStats.rounds || 0);
+
+  const teams = new Set(), decades = new Set(), countries = new Set(), positions = new Set();
+  const names = new Set();
+  const tierWinsByTier = { well_known:0, ball_knowledge:0, stathead:0, psycho:0 };
+  let noHint=0, oneG=0, sixG=0, pitchFast=0, maxHints=0, extremes=0;
+
+  for (const ev of events) {
+    names.add(ev.name);
+    if (ev.teams) for (const t of ev.teams) if (MODERN_TEAMS.has(t)) teams.add(t);
+    if (ev.firstYear) {
+      const d = decadeOf(ev.firstYear);
+      if (d >= 1900 && d <= 2020) decades.add(d);
+    }
+    if (ev.country) countries.add(ev.country);
+    if (ev.pos) positions.add(ev.pos);
+    if (!ev.hintsUsed) noHint++;
+    if (ev.guesses === 1) oneG++;
+    if (!ev.isExtreme && ev.guesses === 6) sixG++;
+    if (ev.hintsUsed > maxHints) maxHints = ev.hintsUsed;
+    if (ev.pos === "P" && ev.guesses <= 3) pitchFast++;
+    if (ev.isExtreme) extremes++;
+    if (ev.tier && (ev.tier in tierWinsByTier)) tierWinsByTier[ev.tier]++;
+  }
+
+  // Backwards-compat: extreme count from existing bg.stats if higher
+  extremes = Math.max(extremes, baseStats.extremeWinsTotal || 0);
+
+  return {
+    totalWins, totalRounds,
+    bestStreak: c.bestWinStreak || 0,
+    sessionMaxWins: c.sessionMaxWins || 0,
+    cleanSessionRounds: c.bestCleanSessionRounds || 0,
+    maxHintsInAWin: maxHints,
+    noHintWins: noHint,
+    oneGuessWins: oneG,
+    sixthGuessWins: sixG,
+    pitcherQuickWins: pitchFast,
+    modernTeamsHit: teams.size,
+    decadesHit: decades.size,
+    countriesHit: countries.size,
+    positionsHit: positions.size,
+    namesHit: names,
+    uniquePlayersHit: names.size,
+    extremesCleared: extremes,
+    maxExtremeLevel: state?.maxExtremeLevel || 0,
+    bestExtremeChain: c.bestExtremeChain || 0,
+    flawlessHighExtreme: c.flawlessHighExtreme === true,
+    allTiersExtremeCleared: c.allTiersExtremeCleared === true,
+    dailyStreakBest: c.dailyStreakBest || 0,
+    sluggerWins: c.sluggerWins || 0,
+    aceWins: c.aceWins || 0,
+    lateNightRounds: c.lateNightRounds || 0,
+    gappedReturn: c.gappedReturn === true,
+    uniqueShares: c.uniqueShares || 0,
+    leaderboardViews: c.leaderboardViews || 0,
+    usernameChanges: c.usernameChanges || 0,
+    bestLeftyStreak: c.bestLeftyStreak || 0,
+    tierWinsByTier,
+  };
+}
+
+function evaluateAchievements() {
+  const snap = computeSnapshot();
+  const unlocked = loadUnlocked();
+  const newly = [];
+  for (const a of ACHIEVEMENTS) {
+    if (unlocked[a.id]?.unlocked) continue;
+    let ok = false;
+    try { ok = !!a.check(snap); } catch {}
+    if (ok) { unlocked[a.id] = { unlocked: true, at: Date.now() }; newly.push(a); }
+  }
+  if (newly.length) {
+    saveUnlocked(unlocked);
+    queueAchievementToasts(newly);
+  }
+  return { snap, unlocked };
+}
+
+// --------------- Toast queue ---------------
+const ACH_QUEUE = [];
+let achToastBusy = false;
+function queueAchievementToasts(unlocks) {
+  ACH_QUEUE.push(...unlocks);
+  if (!achToastBusy) processAchQueue();
+}
+function processAchQueue() {
+  const a = ACH_QUEUE.shift();
+  if (!a) { achToastBusy = false; return; }
+  achToastBusy = true;
+  const wrap = $("ach-toast-wrap");
+  if (!wrap) { achToastBusy = false; return; }
+  const el = document.createElement("div");
+  el.className = "ach-toast";
+  el.innerHTML = `
+    <div class="ach-icon">${CAT_ICON[a.cat] || "🏆"}</div>
+    <div class="ach-body">
+      <div class="ach-label">🏆 Unlocked</div>
+      <div class="ach-title">${escapeHtml(a.title)}</div>
+      <div class="ach-desc">${escapeHtml(a.desc)}</div>
+    </div>`;
+  wrap.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => { el.remove(); processAchQueue(); }, 350);
+  }, 3800);
+}
+
+// --------------- Gallery ---------------
+function openAchievementModal() {
+  bumpCounter("leaderboardViews", 0); // unrelated counter; placeholder
+  const { snap, unlocked } = evaluateAchievements();
+  const modal = $("achievement-modal");
+  if (!modal) return;
+  modal.hidden = false;
+
+  const total = ACHIEVEMENTS.length;
+  const unlockedCount = ACHIEVEMENTS.filter(a => unlocked[a.id]?.unlocked).length;
+  $("achievement-summary").textContent = `${unlockedCount} / ${total} unlocked`;
+
+  const grouped = {};
+  for (const a of ACHIEVEMENTS) {
+    (grouped[a.cat] = grouped[a.cat] || []).push(a);
+  }
+  const html = CAT_ORDER.filter(c => grouped[c]).map(cat => {
+    const items = grouped[cat].map(a => {
+      const u = unlocked[a.id]?.unlocked;
+      const hideContent = a.hidden && !u;
+      const title = hideContent ? "???" : a.title;
+      const desc  = hideContent ? "Find it." : a.desc;
+      let progBar = "";
+      if (!u && !a.hidden && a.progress) {
+        try {
+          const [n, d] = a.progress(snap);
+          const pct = d > 0 ? Math.min(100, Math.floor((n / d) * 100)) : 0;
+          progBar = `<div class="ach-progress"><div class="ach-progress-fill" style="width:${pct}%"></div><span class="ach-progress-label">${n} / ${d}</span></div>`;
+        } catch {}
+      }
+      return `
+        <div class="ach-card ${u ? "unlocked" : "locked"}">
+          <div class="ach-card-icon">${u ? (CAT_ICON[a.cat] || "🏆") : "🔒"}</div>
+          <div class="ach-card-body">
+            <div class="ach-card-title">${escapeHtml(title)}</div>
+            <div class="ach-card-desc">${escapeHtml(desc)}</div>
+            ${progBar}
+          </div>
+        </div>`;
+    }).join("");
+    const catTitle = ({welcome:"Welcome",volume:"Volume",streak:"Streak",skill:"Skill",
+                       variety:"Variety",extreme:"Extreme",style:"Style",hidden:"Hidden",legendary:"Legendary"})[cat] || cat;
+    return `<div class="ach-cat"><h3>${CAT_ICON[cat] || ""} ${catTitle}</h3>${items}</div>`;
+  }).join("");
+  $("achievement-list").innerHTML = html;
+}
+function closeAchievementModal() {
+  const m = $("achievement-modal");
+  if (m) m.hidden = true;
+}
 
 function getSessionToken() {
   let t = localStorage.getItem(SESSION_TOKEN_KEY);
@@ -465,6 +1000,21 @@ function showResult(won) {
     }
   }
   localStorage.setItem("bg.stats", JSON.stringify(localStats));
+
+  // ---- Achievement tracking ----
+  let evRecord = null;
+  if (won) {
+    evRecord = recordWinEvent(state.player, {
+      tier: state.tier,
+      hintsUsed: state.hintsUsed,
+      guesses: state.guesses,
+      isExtreme: state.isExtreme,
+      extremeLevel: state.isExtreme ? (state.extremeWins + 1) : null,
+      extremeStrikes: state.extreme?.attempts || 0,
+    });
+  }
+  updateRoundCounters(won, evRecord);
+  evaluateAchievements();
 
   // Streak handling
   if (state.isExtreme) {
@@ -744,6 +1294,8 @@ function hideChallengeBanner() {
 
 async function shareCurrentPlayer() {
   if (!state.player) return;
+  addUniqueShare(state.player.slug);
+  evaluateAchievements();
   const url = new URL(location.origin + location.pathname);
   url.searchParams.set("p", state.player.slug);
   if (state.username) url.searchParams.set("from", state.username);
@@ -943,18 +1495,27 @@ function saveUsername(e) {
     $("username-error").textContent = "2–20 chars: letters, numbers, _ . -";
     return;
   }
+  if (state.username && v !== state.username) bumpCounter("usernameChanges", 1);
   state.username = v;
   localStorage.setItem("bg.username", v);
   $("username-error").textContent = "";
   hideUsernameModal();
   renderStatus();
+  evaluateAchievements();
 }
 
 // ---------- Leaderboard modal ----------
 
 function showLeaderboardModal() {
+  bumpCounter("leaderboardViews", 1);
   $("leaderboard-modal").hidden = false;
   loadLeaderboard();
+  // Hook the achievement-open button (lives inside the dynamic stats card)
+  setTimeout(() => {
+    const btn = $("open-achievements");
+    if (btn) btn.onclick = openAchievementModal;
+  }, 50);
+  evaluateAchievements();
 }
 function hideLeaderboardModal() { $("leaderboard-modal").hidden = true; }
 
@@ -972,12 +1533,15 @@ function renderLocalStatsCard() {
     ? ` · lv ${EXTREME_LEVELS[Math.min(maxLvl - 1, EXTREME_LEVELS.length - 1)].label}`
     : "";
   const badge = exTotal > 0 ? ` ${extremeBadgeText(exTotal)}${ladder}` : "";
+  const unlocked = loadUnlocked();
+  const unlockedN = ACHIEVEMENTS.filter(a => unlocked[a.id]?.unlocked).length;
   return `
     <div class="stats-card">
       <div class="stat"><span class="label">Your score${badge}</span><span class="value">${s.total}</span></div>
       <div class="stat"><span class="label">Wins</span><span class="value">${s.wins}/${s.rounds}</span></div>
       <div class="stat"><span class="label">Win %</span><span class="value">${winRate}%</span></div>
-    </div>`;
+    </div>
+    <button id="open-achievements" type="button" class="ach-button">🏆 ${unlockedN} / ${ACHIEVEMENTS.length} achievements unlocked — open gallery →</button>`;
 }
 
 async function loadLeaderboard() {
@@ -1155,6 +1719,7 @@ async function init() {
   $("next-btn").addEventListener("click", newRound);
   $("leaderboard-btn").addEventListener("click", showLeaderboardModal);
   $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
+  $("achievement-close")?.addEventListener("click", closeAchievementModal);
   $("username-form").addEventListener("submit", saveUsername);
   $("username-pill").addEventListener("click", showUsernameModal);
   $("share-btn").addEventListener("click", shareCurrentPlayer);
