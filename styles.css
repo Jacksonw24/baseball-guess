@@ -269,6 +269,16 @@ table.leaderboard th, table.leaderboard td {
 table.leaderboard th:nth-child(2), table.leaderboard td:nth-child(2) { text-align: left; }
 table.leaderboard th { color: var(--accent); font-weight: 600; }
 table.leaderboard tr.me { background: rgba(255,204,77,0.12); }
+.lb-name { display: inline-block; }
+.lb-name.beta-name {
+  background: linear-gradient(90deg, #ffe066, #ffd700, #b8860b);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #ffd700;             /* fallback */
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(255, 215, 0, 0.30);
+}
 
 /* ---------- Win celebration ---------- */
 .win-pulse {

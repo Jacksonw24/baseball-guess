@@ -271,6 +271,20 @@ function renderPoolCount(pool) {
 // ---------- Score posting ----------
 
 const POST_QUEUE_KEY = "bg.postQueue";
+const SESSION_TOKEN_KEY = "bg.sessionToken";
+
+function getSessionToken() {
+  let t = localStorage.getItem(SESSION_TOKEN_KEY);
+  if (!t || !/^[A-Za-z0-9_-]{16,64}$/.test(t)) {
+    t = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2) +
+         Math.random().toString(36).slice(2) +
+         Date.now().toString(36));
+    t = t.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+    if (t.length < 16) t = t + "abcdef0123456789".slice(0, 16 - t.length);
+    localStorage.setItem(SESSION_TOKEN_KEY, t);
+  }
+  return t;
+}
 
 function loadPostQueue() {
   try { return JSON.parse(localStorage.getItem(POST_QUEUE_KEY) || "[]"); } catch { return []; }
@@ -283,9 +297,15 @@ async function postScoreRequest(body) {
   const res = await fetch("/api/leaderboard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, sessionToken: getSessionToken() }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const e = new Error(err.error || `HTTP ${res.status}`);
+    e.status = res.status;
+    e.body = err;
+    throw e;
+  }
   return res;
 }
 
@@ -295,7 +315,20 @@ async function postScore(points, extreme = false) {
   try {
     await postScoreRequest(body);
   } catch (e) {
-    // Offline or backend error — queue for later
+    // 4xx errors are permanent — surface to user, don't queue
+    if (e.status && e.status >= 400 && e.status < 500) {
+      flashShareFeedback(e.message || "Score not recorded.", true);
+      // 403 = claimed by another session → prompt user to pick another name
+      if (e.status === 403) {
+        setTimeout(() => {
+          if (confirm("Your username is claimed on another device. Pick a different name?")) {
+            showUsernameModal();
+          }
+        }, 100);
+      }
+      return;
+    }
+    // 5xx / offline → queue for retry
     const q = loadPostQueue();
     q.push({ ...body, ts: Date.now() });
     savePostQueue(q);
@@ -893,10 +926,14 @@ async function loadLeaderboard() {
           <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Rounds</th></tr></thead>
           <tbody>
             ${scores.map((s, i) => {
-              const me = state.username && s.username === state.username ? " class='me'" : "";
+              const meRow = state.username && s.username === state.username;
               const exCount = (s.extremes != null) ? s.extremes : (s.extreme ? 1 : 0);
               const badge = exCount > 0 ? `${extremeBadgeText(exCount)} ` : "";
-              return `<tr${me}><td>${i + 1}</td><td>${badge}@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
+              const nameCls = s.beta ? " beta-name" : "";
+              const rowCls = [meRow ? "me" : "", s.beta ? "row-beta" : ""].filter(Boolean).join(" ");
+              const trAttr = rowCls ? ` class='${rowCls}'` : "";
+              const title = s.beta ? ' title="Beta tester ⭐"' : "";
+              return `<tr${trAttr}><td>${i + 1}</td><td><span class="lb-name${nameCls}"${title}>${badge}@${s.username}</span></td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
             }).join("")}
           </tbody>
         </table>`
