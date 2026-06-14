@@ -421,9 +421,7 @@ def build_player(pid: str, person: dict) -> dict | None:
     if person.get("throws"): bt.append(f"throws {hand.get(person['throws'], person['throws'])}")
     hints = [
         f"Position: {pos_label}" + (f" — {', '.join(bt)}" if bt else ""),
-        f"Best single-season WAR: {best_war:.1f}" if best_war else "Best single-season WAR: n/a",
         f"Career: {career_line}" if career_line else "Career totals unavailable",
-        "Accolades: " + (", ".join(awards) if awards else "no major awards"),
     ]
     # Hometown + Build (height/weight)
     home = fmt_hometown(person.get("born_country"), person.get("born_state"), person.get("born_city"))

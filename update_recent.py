@@ -492,9 +492,7 @@ def recompute_hints(player: dict, awards_extra: list[str], bb_slug: str, mlb_id:
 
     out = [
         f"Position: {pos_label}" + (f" — {', '.join(bt)}" if bt else ""),
-        f"Best single-season WAR: {best_war:.1f}" if best_war else "Best single-season WAR: n/a",
         f"Career: {career_line}",
-        accolades_line,
     ]
     if hometown: out.append(hometown)
     if build:    out.append(build)

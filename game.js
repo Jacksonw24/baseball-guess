@@ -1,8 +1,6 @@
 const HINT_LABELS = [
   "Position & handedness",
-  "Best single-season WAR",
   "Career stat line",
-  "Accolades",
   "Hometown",
   "Build",
   "Last-name initial",
