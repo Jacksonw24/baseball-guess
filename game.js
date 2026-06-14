@@ -9,25 +9,50 @@ const HINT_LABELS = [
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{2,20}$/;
 
 const ERA_RANGES = {
+  "1900s": [1900, 1909],
+  "1910s": [1910, 1919],
+  "1920s": [1920, 1929],
+  "1930s": [1930, 1939],
+  "1940s": [1940, 1949],
+  "1950s": [1950, 1959],
+  "1960s": [1960, 1969],
+  "1970s": [1970, 1979],
+  "1980s": [1980, 1989],
+  "1990s": [1990, 1999],
   "2000s": [2000, 2009],
   "2010s": [2010, 2019],
   "2020s": [2020, 2029],
 };
+
+// Rename the legacy tier keys so existing installs don't break
+const TIER_MIGRATION = { famous: "well_known", pros: "ball_knowledge", alltime: "stathead" };
+(function migrateTierStorage() {
+  const t = localStorage.getItem("bg.tier");
+  if (t && TIER_MIGRATION[t]) localStorage.setItem("bg.tier", TIER_MIGRATION[t]);
+  try {
+    const r = JSON.parse(localStorage.getItem("bg.recentByTier") || "{}");
+    let dirty = false;
+    for (const k of Object.keys(r)) {
+      if (TIER_MIGRATION[k]) { r[TIER_MIGRATION[k]] = r[k]; delete r[k]; dirty = true; }
+    }
+    if (dirty) localStorage.setItem("bg.recentByTier", JSON.stringify(r));
+  } catch {}
+})();
 
 const STREAK_FOR_EXTREME = 5;
 const EXTREME_START_YEAR = 2010;
 
 // Each successive Extreme clear escalates difficulty. Index = extremeWins so far.
 const EXTREME_LEVELS = [
-  { strikes: 3, poolTier: "famous",  showCount: true,  label: "I"   },
-  { strikes: 3, poolTier: "pros",    showCount: true,  label: "II"  },
-  { strikes: 2, poolTier: "pros",    showCount: true,  label: "III" },
-  { strikes: 2, poolTier: "pros",    showCount: false, label: "IV"  },
-  { strikes: 2, poolTier: "alltime", showCount: false, label: "V"   },
-  { strikes: 1, poolTier: "alltime", showCount: false, label: "VI+" },
+  { strikes: 3, poolTier: "well_known",     showCount: true,  label: "I"   },
+  { strikes: 3, poolTier: "ball_knowledge", showCount: true,  label: "II"  },
+  { strikes: 2, poolTier: "ball_knowledge", showCount: true,  label: "III" },
+  { strikes: 2, poolTier: "ball_knowledge", showCount: false, label: "IV"  },
+  { strikes: 2, poolTier: "stathead",       showCount: false, label: "V"   },
+  { strikes: 1, poolTier: "psycho",         showCount: false, label: "VI+" },
 ];
-const TIER_RANK = { famous: 0, pros: 1, alltime: 2 };
-const TIERS_BY_RANK = ["famous", "pros", "alltime"];
+const TIER_RANK = { well_known: 0, ball_knowledge: 1, stathead: 2, psycho: 3 };
+const TIERS_BY_RANK = ["well_known", "ball_knowledge", "stathead", "psycho"];
 
 function getExtremeConfig() {
   return EXTREME_LEVELS[Math.min(state.extremeWins, EXTREME_LEVELS.length - 1)];
@@ -92,7 +117,7 @@ function matchTeam(input) {
 
 const state = {
   manifest: null,
-  tier: localStorage.getItem("bg.tier") || "famous",
+  tier: localStorage.getItem("bg.tier") || "well_known",
   era:  localStorage.getItem("bg.era")  || "all",
   pos:  localStorage.getItem("bg.pos")  || "all",
   team: localStorage.getItem("bg.team") || "all",
@@ -1105,6 +1130,8 @@ async function init() {
     setFeedback("Couldn't load player list. Refresh to try again.", "bad");
     return;
   }
+  // Safety: if the tier in localStorage doesn't match any current tier key, reset
+  if (!state.manifest[state.tier]) state.tier = "well_known";
   $("tier").value = state.tier;
   $("era").value  = state.era;
   $("pos").value  = state.pos;
