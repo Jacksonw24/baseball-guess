@@ -245,13 +245,25 @@ function playerHasTeam(entry, teamCode) {
   return list.includes(teamCode);
 }
 
+const POS_GROUP_MEMBERS = {
+  IF: new Set(["1B", "2B", "3B", "SS"]),
+  OF: new Set(["LF", "CF", "RF", "OF"]),
+};
+
+function entryMatchesPos(entry, posFilter) {
+  if (!posFilter || posFilter === "all") return true;
+  const group = POS_GROUP_MEMBERS[posFilter];
+  if (group) return group.has(entry.p);
+  return entry.p === posFilter;
+}
+
 function getFilteredPool() {
   const base = state.manifest?.[state.tier] || [];
   const [eraLo, eraHi] = ERA_RANGES[state.era] || [];
   const pos = state.pos === "all" ? null : state.pos;
   const team = state.team === "all" ? null : state.team;
   return base.filter(e => {
-    if (pos && e.p !== pos) return false;
+    if (pos && !entryMatchesPos(e, pos)) return false;
     if (eraLo != null) {
       if (e.l == null || e.f == null) return false;
       if (e.l < eraLo || e.f > eraHi) return false;
@@ -281,7 +293,7 @@ function renderPoolCount(pool) {
   if (!el) return;
   const parts = [];
   if (state.era !== "all")  parts.push(state.era);
-  if (state.pos !== "all")  parts.push(({P:"pitchers",C:"catchers",IF:"infield",OF:"outfield",DH:"DH"})[state.pos]);
+  if (state.pos !== "all")  parts.push(({P:"pitchers",C:"catchers",IF:"infield",OF:"outfield",DH:"DH","1B":"first base","2B":"second base","3B":"third base",SS:"shortstop",LF:"left field",CF:"center field",RF:"right field"})[state.pos] || state.pos);
   if (state.team !== "all") parts.push(TEAM_DISPLAY_NAMES[state.team] || state.team);
   const suffix = parts.length ? ` (${parts.join(", ")})` : "";
   el.textContent = `${pool.length} player${pool.length === 1 ? "" : "s"} in pool${suffix}`;
