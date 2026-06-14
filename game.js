@@ -926,14 +926,10 @@ async function loadLeaderboard() {
           <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Rounds</th></tr></thead>
           <tbody>
             ${scores.map((s, i) => {
-              const meRow = state.username && s.username === state.username;
+              const me = state.username && s.username === state.username ? " class='me'" : "";
               const exCount = (s.extremes != null) ? s.extremes : (s.extreme ? 1 : 0);
               const badge = exCount > 0 ? `${extremeBadgeText(exCount)} ` : "";
-              const nameCls = s.beta ? " beta-name" : "";
-              const rowCls = [meRow ? "me" : "", s.beta ? "row-beta" : ""].filter(Boolean).join(" ");
-              const trAttr = rowCls ? ` class='${rowCls}'` : "";
-              const title = s.beta ? ' title="Beta tester ⭐"' : "";
-              return `<tr${trAttr}><td>${i + 1}</td><td><span class="lb-name${nameCls}"${title}>${badge}@${s.username}</span></td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
+              return `<tr${me}><td>${i + 1}</td><td>${badge}@${s.username}</td><td>${s.score}</td><td>${s.rounds || "–"}</td></tr>`;
             }).join("")}
           </tbody>
         </table>`

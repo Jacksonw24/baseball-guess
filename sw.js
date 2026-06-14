@@ -1,6 +1,6 @@
 // Service Worker — heavy pre-cache + stale-while-revalidate
 // Bump SHELL_VERSION on each release to evict the old shell cache.
-const SHELL_VERSION = "2026-06-13-011";
+const SHELL_VERSION = "2026-06-13-012";
 const DATA_VERSION  = "v4";          // bump to force a fresh bulk re-cache of /data/
 const SHELL_CACHE = `bg-shell-${SHELL_VERSION}`;
 const DATA_CACHE  = `bg-data-${DATA_VERSION}`;
