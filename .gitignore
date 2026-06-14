@@ -10,3 +10,6 @@ __pycache__/
 
 # Local servers / logs
 *.log
+
+# Node modules
+node_modules/
