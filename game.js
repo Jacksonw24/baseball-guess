@@ -483,25 +483,25 @@ const ACHIEVEMENTS = [
     desc:"Change your username 5+ times.",
     check: s => s.usernameChanges >= 5, progress: s => [s.usernameChanges,5] },
 
-  // 🕵️ Hidden — render as ??? until unlocked
+  // 🕵️ Hidden — render as ??? until unlocked. Slug-based for stability.
   { id:"dog_photo",     cat:"hidden", hidden:true, title:"Dog Photo",
     desc:"There's no way you guessed Pete Crow-Armstrong.",
-    check: s => s.namesHit.has("Pete Crow-Armstrong") },
+    check: s => s.slugsHit.has("crowape01") },
   { id:"the_bambino",   cat:"hidden", hidden:true, title:"The Bambino",
     desc:"You called your shot.",
-    check: s => s.namesHit.has("Babe Ruth") },
+    check: s => s.slugsHit.has("ruthba01") },
   { id:"iron_man",      cat:"hidden", hidden:true, title:"Iron Man",
     desc:"2,632 games in a row, baby.",
-    check: s => s.namesHit.has("Cal Ripken Jr.") },
+    check: s => s.slugsHit.has("ripkeca01") },
   { id:"two_way",       cat:"hidden", hidden:true, title:"Two-Way",
     desc:"You spotted the once-in-a-century.",
-    check: s => s.namesHit.has("Shohei Ohtani") },
+    check: s => s.slugsHit.has("ohtansh01") },
   { id:"four_hundred",  cat:"hidden", hidden:true, title:".400",
     desc:"The last man to do it.",
-    check: s => s.namesHit.has("Ted Williams") },
+    check: s => s.slugsHit.has("willite01") },
   { id:"the_hammer",    cat:"hidden", hidden:true, title:"The Hammer",
-    desc:"715 and counting.",
-    check: s => s.namesHit.has("Hank Aaron") },
+    desc:"755 and counting.",
+    check: s => s.slugsHit.has("aaronha01") },
   { id:"lefty_x3",      cat:"hidden", hidden:true, title:"Lefty Lefty Lefty",
     desc:"Five lefty-throwing wins in a row.",
     check: s => s.bestLeftyStreak >= 5 },
@@ -582,13 +582,14 @@ function rowYears(player) {
 function decadeOf(year) { return Math.floor(year / 10) * 10; }
 
 function recordWinEvent(player, ctx) {
+  if (!player) return null;
   const years = rowYears(player);
   const firstYear = years.length ? Math.min(...years) : null;
   const lastYear  = years.length ? Math.max(...years) : null;
   const teamSet   = new Set(extractTeams(player));
   const ev = {
-    name: player.name,
-    slug: player.slug,
+    name: player.name || "",
+    slug: player.slug || "",
     tier: ctx.tier,
     pos:  parsePos(player.hints),
     throws: parseThrows(player.hints),
@@ -717,13 +718,14 @@ function computeSnapshot() {
   const totalRounds = c.lifetimeRounds || 0;
 
   const teams = new Set(), decades = new Set(), countries = new Set(), positions = new Set();
-  const names = new Set();
+  const names = new Set(), slugs = new Set();
   const tierWinsByTier = { well_known:0, ball_knowledge:0, stathead:0, psycho:0 };
   let noHint=0, oneG=0, sixG=0, pitchFast=0, maxHints=0, extremes=0;
   let maxExtLevel = 0;
 
   for (const ev of events) {
-    names.add(ev.name);
+    if (ev.name) names.add(ev.name);
+    if (ev.slug) slugs.add(ev.slug);
     if (ev.teams) for (const t of ev.teams) if (MODERN_TEAMS.has(t)) teams.add(t);
     if (ev.firstYear) {
       const d = decadeOf(ev.firstYear);
@@ -758,7 +760,8 @@ function computeSnapshot() {
     countriesHit: countries.size,
     positionsHit: positions.size,
     namesHit: names,
-    uniquePlayersHit: names.size,
+    slugsHit: slugs,
+    uniquePlayersHit: slugs.size,
     extremesCleared: extremes,
     maxExtremeLevel: maxExtLevel,
     bestExtremeChain: c.bestExtremeChain || 0,
@@ -835,7 +838,8 @@ function openAchievementModal() {
 
   const total = ACHIEVEMENTS.length;
   const unlockedCount = ACHIEVEMENTS.filter(a => unlocked[a.id]?.unlocked).length;
-  $("achievement-summary").textContent = `${unlockedCount} / ${total} unlocked`;
+  const evCount = loadEvents().length;
+  $("achievement-summary").innerHTML = `${unlockedCount} / ${total} unlocked &nbsp;·&nbsp; ${evCount} win${evCount === 1 ? "" : "s"} tracked`;
 
   const grouped = {};
   for (const a of ACHIEVEMENTS) {
