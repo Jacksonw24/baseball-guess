@@ -614,16 +614,19 @@ function recordWinEvent(player, ctx) {
 function updateRoundCounters(won, ev) {
   const c = loadCounters();
   const now = Date.now();
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayKey = today.toISOString().slice(0,10);
+  // Use the user's LOCAL date so midnight in their timezone is the boundary,
+  // not UTC midnight (which would shift the day for anyone outside UTC).
+  const d = new Date();
+  const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
   // Daily streak (login-based)
   const lastDay = c.lastDayPlayed;
   if (lastDay !== todayKey) {
     // Determine consecutive
     if (lastDay) {
-      const d1 = new Date(lastDay); const d2 = new Date(todayKey);
-      const days = Math.round((d2 - d1) / 86400000);
+      // Parse YYYY-MM-DD into a local-midnight Date for a clean delta in days
+      const p = (k) => { const [y,m,d] = k.split("-").map(Number); return new Date(y, m-1, d); };
+      const days = Math.round((p(todayKey) - p(lastDay)) / 86400000);
       if (days === 1) {
         c.dailyStreakCur = (c.dailyStreakCur || 1) + 1;
       } else if (days > 1) {
@@ -1733,6 +1736,14 @@ async function init() {
   $("leaderboard-btn").addEventListener("click", showLeaderboardModal);
   $("leaderboard-close").addEventListener("click", hideLeaderboardModal);
   $("achievement-close")?.addEventListener("click", closeAchievementModal);
+
+  // Tapping the dim area outside a modal card closes the modal — match the
+  // iOS convention everyone expects.
+  for (const m of document.querySelectorAll(".modal")) {
+    m.addEventListener("click", (e) => {
+      if (e.target === m) m.hidden = true;
+    });
+  }
   // The "open achievements" button lives inside the dynamically-rendered stats
   // card and is re-created on every load — use event delegation so the handler
   // survives re-renders.

@@ -336,16 +336,20 @@ def normalize_awards(pid: str) -> list[str]:
     return out
 
 
-def classify_tier(career_war: float, career_pa: int, career_ipouts: int,
-                  pid: str, awards: list[str], asg_count: int) -> str:
+def classify_tiers(career_war: float, career_pa: int, career_ipouts: int,
+                   pid: str, asg_count: int) -> list[str]:
+    """Cumulative tier membership: well_known ⊂ ball_knowledge ⊂ stathead ⊂ psycho."""
     is_hof = pid in hof
     mvps = awards_by_player[pid].get("Most Valuable Player", 0)
     cys  = awards_by_player[pid].get("Cy Young Award", 0)
-    if is_hof or mvps >= 1 or cys >= 1 or career_war >= 50 or asg_count >= 5:
-        return "famous"
-    if career_pa >= 5000 or career_ipouts >= 4500:  # ~1500 IP
-        return "pros"
-    return "alltime"
+    well_known     = is_hof or mvps >= 2 or cys >= 2 or career_war >= 70 or asg_count >= 10
+    ball_knowledge = well_known or mvps >= 1 or cys >= 1 or career_war >= 35 or asg_count >= 5
+    stathead       = ball_knowledge or career_pa >= 4000 or career_ipouts >= 3000
+    tiers = ["psycho"]                          # everyone
+    if stathead:       tiers.append("stathead")
+    if ball_knowledge: tiers.append("ball_knowledge")
+    if well_known:     tiers.append("well_known")
+    return tiers
 
 
 def build_player(pid: str, person: dict) -> dict | None:
@@ -412,7 +416,7 @@ def build_player(pid: str, person: dict) -> dict | None:
     # Awards
     awards = normalize_awards(pid)
     asg = allstar_count.get(pid, 0)
-    tier = classify_tier(career_war, career_pa, career_ipouts, pid, awards, asg)
+    tiers = classify_tiers(career_war, career_pa, career_ipouts, pid, asg)
 
     # Hints
     hand = {"L": "Left", "R": "Right", "B": "Both", "S": "Switch"}
@@ -443,7 +447,7 @@ def build_player(pid: str, person: dict) -> dict | None:
         "rows": display_rows,
         "hidden_cols": [],
         "hints": hints,
-        "tier": tier,
+        "tiers": tiers,
         "career_pa": career_pa,
         "career_ipouts": career_ipouts,
     }
@@ -464,7 +468,7 @@ with open(RAW / "People.csv", newline="") as fh:
 for pid, p in people.items():
     p["birth_year"] = birth_years.get(pid, "")
 
-manifest = {"famous": [], "pros": [], "alltime": []}
+manifest = {"well_known": [], "ball_knowledge": [], "stathead": [], "psycho": []}
 written = 0
 skipped = 0
 all_ids = set(batting.keys()) | set(pitching.keys())
@@ -483,23 +487,15 @@ for pid in sorted(all_ids):
         skipped += 1; continue
     slug = data["slug"]
     (OUT / f"{slug}.json").write_text(json.dumps({
-        k: v for k, v in data.items() if k not in ("tier", "career_pa", "career_ipouts")
+        k: v for k, v in data.items() if k not in ("tiers", "career_pa", "career_ipouts")
     }, separators=(",", ":")))
     entry = {"id": slug, "name": data["name"]}
-    # A player qualifies for famous AND pros AND alltime tiers cumulatively (broader tiers include them)
-    if data["tier"] == "famous":
-        manifest["famous"].append(entry)
-        manifest["pros"].append(entry)
-        manifest["alltime"].append(entry)
-    elif data["tier"] == "pros":
-        manifest["pros"].append(entry)
-        manifest["alltime"].append(entry)
-    else:
-        manifest["alltime"].append(entry)
+    # Cumulative membership: each tier the player qualifies for gets a copy
+    for tier in data["tiers"]:
+        manifest[tier].append(entry)
     written += 1
 
 (ROOT / "data" / "manifest.json").write_text(json.dumps(manifest, separators=(",", ":")))
 print(f"Done. Wrote {written} players, skipped {skipped}.")
-print(f"  famous:  {len(manifest['famous'])}")
-print(f"  pros:    {len(manifest['pros'])}")
-print(f"  alltime: {len(manifest['alltime'])}")
+for t in ("well_known", "ball_knowledge", "stathead", "psycho"):
+    print(f"  {t:<15} {len(manifest[t]):>6}")
