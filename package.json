@@ -1,0 +1,23 @@
+{
+  "name": "baseball-guess",
+  "version": "1.0.0",
+  "description": "A guess-the-MLB-player game built from the year-by-year stat lines on Baseball Reference. Pure static site — no backend in production.",
+  "main": "game.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jacksonw24/baseball-guess.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Jacksonw24/baseball-guess/issues"
+  },
+  "homepage": "https://github.com/Jacksonw24/baseball-guess#readme",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
+}
